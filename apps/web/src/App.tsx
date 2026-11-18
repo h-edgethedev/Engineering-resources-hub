@@ -3,8 +3,13 @@ export default function App() {
     <main className="shell">
       <header className="topbar">
         <a className="brand" href="/" aria-label="Engineering Resources Hub home">
-          <span className="brand-mark" aria-hidden="true">ER</span>
-          <span>Engineering Resources Hub</span>
+          <img
+            className="brand-logo"
+            src="/engineering-resources-hub-logo.png"
+            alt="Engineering Resources Hub"
+            width="1200"
+            height="380"
+          />
         </a>
         <span className="campus-label">University of Lagos</span>
       </header>
