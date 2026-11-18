@@ -1,0 +1,29 @@
+{
+  "name": "engineering-resources-hub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Open academic resource platform, starting at the University of Lagos.",
+  "workspaces": [
+    "apps/web",
+    "apps/api",
+    "packages/shared"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev:web": "npm run dev --workspace @erh/web",
+    "dev:api": "npm run dev --workspace @erh/api",
+    "build": "npm run build --workspace @erh/shared && npm run build --workspace @erh/api && npm run build --workspace @erh/web",
+    "typecheck": "npm run build --workspace @erh/shared && npm run typecheck --workspace @erh/api && npm run typecheck --workspace @erh/web",
+    "db:generate": "npm run db:generate --workspace @erh/api",
+    "db:migrate": "npm run db:migrate --workspace @erh/api",
+    "db:seed": "npm run db:seed --workspace @erh/api",
+    "db:studio": "npm run db:studio --workspace @erh/api"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "@prisma/engines@7.10.1": true,
+    "prisma@7.10.1": true
+  }
+}
