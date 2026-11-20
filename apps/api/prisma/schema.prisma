@@ -12,16 +12,33 @@ enum RecordStatus {
   INACTIVE
 }
 
+enum ResourceType {
+  LECTURE_NOTE
+  TEXTBOOK
+  PAST_QUESTION
+  SOLUTION
+  LAB_MANUAL
+  PROGRAMMING_EXERCISE
+  OTHER
+}
+
+enum ResourceApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REMOVED
+}
+
 model University {
-  id          String             @id @default(uuid()) @db.Uuid
+  id          String            @id @default(uuid()) @db.Uuid
   name        String
-  slug        String             @unique
-  countryCode String             @default("NG") @db.Char(2)
-  status      RecordStatus       @default(ACTIVE)
+  slug        String            @unique
+  countryCode String            @default("NG") @db.Char(2)
+  status      RecordStatus      @default(ACTIVE)
   faculties   Faculty[]
   sessions    AcademicSession[]
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
 }
 
 model Faculty {
@@ -39,60 +56,61 @@ model Faculty {
 }
 
 model Department {
-  id          String      @id @default(uuid()) @db.Uuid
-  facultyId   String      @db.Uuid
-  faculty     Faculty     @relation(fields: [facultyId], references: [id], onDelete: Restrict)
-  name        String
-  slug        String
-  programmes  Programme[]
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id         String      @id @default(uuid()) @db.Uuid
+  facultyId  String      @db.Uuid
+  faculty    Faculty     @relation(fields: [facultyId], references: [id], onDelete: Restrict)
+  name       String
+  slug       String
+  programmes Programme[]
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
 
   @@unique([facultyId, slug])
   @@index([facultyId])
 }
 
 model Programme {
-  id             String            @id @default(uuid()) @db.Uuid
-  departmentId   String            @db.Uuid
-  department     Department        @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  name           String
-  slug           String
-  award          String?
-  durationYears  Int?
-  status         RecordStatus      @default(ACTIVE)
-  levels         ProgrammeLevel[]
-  sessions       ProgrammeSession[]
-  courses        Course[]
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
+  id            String             @id @default(uuid()) @db.Uuid
+  departmentId  String             @db.Uuid
+  department    Department         @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  name          String
+  slug          String
+  award         String?
+  durationYears Int?
+  status        RecordStatus       @default(ACTIVE)
+  levels        ProgrammeLevel[]
+  sessions      ProgrammeSession[]
+  courses       Course[]
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
 
   @@unique([departmentId, slug])
   @@index([departmentId])
 }
 
 model AcademicSession {
-  id            String             @id @default(uuid()) @db.Uuid
-  universityId  String             @db.Uuid
-  university    University         @relation(fields: [universityId], references: [id], onDelete: Restrict)
-  label         String
-  startDate     DateTime?          @db.Date
-  endDate       DateTime?          @db.Date
-  programmes    ProgrammeSession[]
+  id             String             @id @default(uuid()) @db.Uuid
+  universityId   String             @db.Uuid
+  university     University         @relation(fields: [universityId], references: [id], onDelete: Restrict)
+  label          String
+  startDate      DateTime?          @db.Date
+  endDate        DateTime?          @db.Date
+  programmes     ProgrammeSession[]
   courseOffering CourseOffering[]
-  createdAt     DateTime           @default(now())
-  updatedAt     DateTime           @updatedAt
+  resources      Resource[]
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
 
   @@unique([universityId, label])
   @@index([universityId])
 }
 
 model ProgrammeSession {
-  programmeId      String         @db.Uuid
-  programme        Programme      @relation(fields: [programmeId], references: [id], onDelete: Restrict)
-  academicSessionId String        @db.Uuid
-  academicSession  AcademicSession @relation(fields: [academicSessionId], references: [id], onDelete: Restrict)
-  createdAt        DateTime       @default(now())
+  programmeId       String          @db.Uuid
+  programme         Programme       @relation(fields: [programmeId], references: [id], onDelete: Restrict)
+  academicSessionId String          @db.Uuid
+  academicSession   AcademicSession @relation(fields: [academicSessionId], references: [id], onDelete: Restrict)
+  createdAt         DateTime        @default(now())
 
   @@id([programmeId, academicSessionId])
   @@index([academicSessionId])
@@ -114,32 +132,34 @@ model ProgrammeLevel {
 }
 
 model Semester {
-  id               String          @id @default(uuid()) @db.Uuid
-  programmeLevelId String          @db.Uuid
-  programmeLevel   ProgrammeLevel  @relation(fields: [programmeLevelId], references: [id], onDelete: Restrict)
+  id               String           @id @default(uuid()) @db.Uuid
+  programmeLevelId String           @db.Uuid
+  programmeLevel   ProgrammeLevel   @relation(fields: [programmeLevelId], references: [id], onDelete: Restrict)
   code             String
   label            String
   ordinal          Int
   offerings        CourseOffering[]
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
+  resources        Resource[]
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
   @@unique([programmeLevelId, code])
   @@unique([programmeLevelId, ordinal])
 }
 
 model Course {
-  id           String           @id @default(uuid()) @db.Uuid
-  programmeId  String           @db.Uuid
-  programme    Programme        @relation(fields: [programmeId], references: [id], onDelete: Restrict)
-  code         String
-  title        String
-  description  String?
-  creditUnits  Int?
-  status       RecordStatus     @default(ACTIVE)
-  offerings    CourseOffering[]
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  id          String           @id @default(uuid()) @db.Uuid
+  programmeId String           @db.Uuid
+  programme   Programme        @relation(fields: [programmeId], references: [id], onDelete: Restrict)
+  code        String
+  title       String
+  description String?
+  creditUnits Int?
+  status      RecordStatus     @default(ACTIVE)
+  offerings   CourseOffering[]
+  resources   Resource[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 
   @@unique([programmeId, code])
   @@index([programmeId])
@@ -157,4 +177,40 @@ model CourseOffering {
 
   @@id([courseId, semesterId, academicSessionId])
   @@index([semesterId, academicSessionId])
+}
+
+model Resource {
+  id                String                 @id @default(uuid()) @db.Uuid
+  courseId          String                 @db.Uuid
+  course            Course                 @relation(fields: [courseId], references: [id], onDelete: Restrict)
+  academicSessionId String?                @db.Uuid
+  academicSession   AcademicSession?       @relation(fields: [academicSessionId], references: [id], onDelete: Restrict)
+  semesterId        String?                @db.Uuid
+  semester          Semester?              @relation(fields: [semesterId], references: [id], onDelete: Restrict)
+  title             String
+  description       String?
+  type              ResourceType
+  status            ResourceApprovalStatus @default(PENDING)
+  file              ResourceFile?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  @@index([courseId, status, createdAt])
+  @@index([academicSessionId, semesterId])
+  @@index([type, status])
+}
+
+model ResourceFile {
+  id               String   @id @default(uuid()) @db.Uuid
+  resourceId       String   @unique @db.Uuid
+  resource         Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  provider         String
+  storageKey       String
+  originalFilename String
+  mediaType        String
+  byteSize         Int
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([provider, storageKey])
 }

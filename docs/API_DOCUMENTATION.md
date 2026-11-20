@@ -30,6 +30,20 @@ The readiness endpoint returns `200` when ready and `503` when the database chec
 | `GET` | `/api/v1/courses` | Search active courses with academic filters and pagination |
 | `GET` | `/api/v1/courses/:courseId` | Get an active course by UUID, including programme and offerings |
 
+## Resource endpoints
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/v1/resources` | Create a resource in `PENDING` status |
+| `GET` | `/api/v1/resources` | List resources; filter by course, type, status, session, or semester; paginate |
+| `GET` | `/api/v1/resources/:resourceId` | Get a resource and its course/file metadata |
+| `PATCH` | `/api/v1/resources/:resourceId` | Update resource metadata, academic context, or file metadata |
+| `DELETE` | `/api/v1/resources/:resourceId` | Delete the resource and its file metadata |
+
+Create requires `courseId`, `title`, `type`, and a `file` object containing `provider`, `storageKey`, `originalFilename`, `mediaType`, and `byteSize`. `description`, `academicSessionId`, and `semesterId` are optional. Resource types are `LECTURE_NOTE`, `TEXTBOOK`, `PAST_QUESTION`, `SOLUTION`, `LAB_MANUAL`, `PROGRAMMING_EXERCISE`, and `OTHER`. If a session or semester is supplied, it must match an offering for the selected course. New resources are always `PENDING`; the CRUD API does not accept approval status changes. Delete removes the database resource and its file metadata; it does not delete the binary from the external storage provider.
+
+These endpoints currently store and return file metadata plus a storage provider/key. They do not upload, download, scan, or sign binary files. Authentication and RBAC are not yet implemented, so resource management endpoints must be treated as development-only until authorization and ownership checks are added.
+
 Route parameters and course query filters are validated with Zod. Course filters can be combined: `university`, `faculty`, `department`, `level` (three digits, such as `100`), `session` (`YYYY/YYYY`) and `semester` (semester code). Pagination uses `page` (default `1`) and `pageSize` (default `20`, maximum `100`). For example: `/api/v1/courses?university=university-of-lagos&department=computer-engineering&level=100`.
 
 List endpoints return `200` with `data: []` when there are no matching records. Course lists also include `meta` with `page`, `pageSize`, `total` and `totalPages`. A malformed slug, UUID, filter or pagination value returns `400 VALIDATION_ERROR`; a valid identifier that does not resolve to a record (including a missing parent in a nested path) returns `404` with a resource-specific error code. Controllers translate service results into HTTP responses; services contain Prisma queries.
