@@ -22,9 +22,17 @@ The readiness endpoint returns `200` when ready and `503` when the database chec
 |---|---|---|
 | `GET` | `/api/v1/universities` | List active universities |
 | `GET` | `/api/v1/universities/:slug` | Get a university with faculties and departments |
+| `GET` | `/api/v1/universities/:universitySlug/faculties` | List faculties in an active university |
+| `GET` | `/api/v1/universities/:universitySlug/faculties/:facultySlug/departments` | List departments in a faculty |
 | `GET` | `/api/v1/universities/:universitySlug/faculties/:facultySlug/departments/:departmentSlug` | Get department programmes, levels, semesters and courses |
+| `GET` | `/api/v1/universities/:universitySlug/faculties/:facultySlug/departments/:departmentSlug/programmes` | List active programmes and levels in a department |
+| `GET` | `/api/v1/universities/:universitySlug/faculties/:facultySlug/departments/:departmentSlug/programmes/:programmeSlug` | Get a programme with levels, semesters and active courses |
+| `GET` | `/api/v1/courses` | Search active courses with academic filters and pagination |
+| `GET` | `/api/v1/courses/:courseId` | Get an active course by UUID, including programme and offerings |
 
-Route parameters are validated with Zod before controller logic runs. Controllers translate service results into HTTP responses; services contain Prisma queries.
+Route parameters and course query filters are validated with Zod. Course filters can be combined: `university`, `faculty`, `department`, `level` (three digits, such as `100`), `session` (`YYYY/YYYY`) and `semester` (semester code). Pagination uses `page` (default `1`) and `pageSize` (default `20`, maximum `100`). For example: `/api/v1/courses?university=university-of-lagos&department=computer-engineering&level=100`.
+
+List endpoints return `200` with `data: []` when there are no matching records. Course lists also include `meta` with `page`, `pageSize`, `total` and `totalPages`. A malformed slug, UUID, filter or pagination value returns `400 VALIDATION_ERROR`; a valid identifier that does not resolve to a record (including a missing parent in a nested path) returns `404` with a resource-specific error code. Controllers translate service results into HTTP responses; services contain Prisma queries.
 
 ## Response format
 
@@ -32,4 +40,4 @@ Successful responses use `{ "data": ... }`. Errors use `{ "error": { "code": "..
 
 ## Tests
 
-Run API endpoint tests from the repository root with `npm run test:api`. Tests use an injected database health check so they do not require PostgreSQL. Academic database-backed success responses still require a running PostgreSQL instance and seeded data.
+Run API endpoint tests from the repository root with `npm run test:api`. The HTTP academic endpoint tests mock Prisma, so they verify route behavior, validation, response shapes, filters and not-found/empty behavior without requiring PostgreSQL. The readiness check also has an injected database health check.
