@@ -2,7 +2,7 @@
 
 This is a logical proposal for review, not a committed Prisma schema or migration. UUID primary keys are assumed. Use UTC timestamps and explicit foreign keys. Add indexes from actual browse/search patterns and retain unique constraints only where the owning scope makes values unique.
 
-The first academic data seed will cover the Computer Engineering and Electrical and Electronics Engineering departments within the Faculty of Engineering at the University of Lagos (UNILAG). The project owner will validate course data. Confirm programme labels before preparing seed records. Seed data should use normal university, faculty, department, programme and course records; no UNILAG-specific branches or identifiers belong in application logic.
+The initial data seed covers both focus departments within UNILAG's Faculty of Engineering. It also includes 36 owner-confirmed Computer Engineering course offerings across 100 and 200 Level (2024/2025 and 2025/2026). The source registration forms label the department Electrical and Electronics Engineering but identify the programme as Bachelor of Science in Computer Engineering; the owner confirmed these rows belong in the Computer Engineering catalogue. Seed data uses normal academic records, with no UNILAG-specific application logic.
 
 ## 1. Academic structure
 

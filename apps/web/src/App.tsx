@@ -1,10 +1,13 @@
 import { useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Link, Route, Routes, useParams } from 'react-router-dom';
 
 interface Department {
   id: string;
   name: string;
   slug: string;
+  facultySlug?: string;
+  universitySlug?: string;
 }
 
 interface Faculty {
@@ -26,12 +29,49 @@ interface ApiResponse<T> {
   data: T;
 }
 
+interface DepartmentDetails extends Department {
+  faculty: { name: string; slug: string };
+  programmes: Array<{
+    id: string;
+    name: string;
+    slug: string;
+    award: string | null;
+    durationYears: number | null;
+    levels: Array<{
+      id: string;
+      code: string;
+      label: string | null;
+      ordinal: number;
+      semesters: Array<{ id: string; code: string; label: string; ordinal: number }>;
+    }>;
+    courses: Array<{
+      id: string;
+      code: string;
+      title: string;
+      creditUnits: number | null;
+      offerings: Array<{
+        academicSession: { label: string };
+        semester: { label: string; programmeLevel: { code: string; label: string | null } };
+      }>;
+    }>;
+  }>;
+}
+
 async function fetchUniversity(): Promise<University> {
   const response = await fetch('/api/v1/universities/university-of-lagos');
   if (!response.ok) {
     throw new Error(response.status === 404 ? 'The university catalogue is not available yet.' : 'Could not load the academic catalogue.');
   }
   const result = (await response.json()) as ApiResponse<University>;
+  return result.data;
+}
+
+async function fetchDepartment(universitySlug: string, facultySlug: string, departmentSlug: string): Promise<DepartmentDetails> {
+  const response = await fetch(`/api/v1/universities/${universitySlug}/faculties/${facultySlug}/departments/${departmentSlug}`);
+  if (!response.ok) {
+    throw new Error(response.status === 404 ? 'This department could not be found.' : 'Could not load department details.');
+  }
+  const result = (await response.json()) as ApiResponse<DepartmentDetails>;
   return result.data;
 }
 
@@ -54,10 +94,9 @@ function SiteHeader() {
   return (
     <header className="site-header">
       <div className="header-inner">
-        <a className="brand" href="#home" aria-label="EngHub home">
-          <span className="brand-mark" aria-hidden="true">E<span>+</span></span>
-          <span className="brand-name">Eng<span>Hub</span></span>
-        </a>
+        <Link className="brand" to="/" aria-label="Engineering Resources Hub home">
+          <img className="brand-logo" src="/engineering-resources-hub-logo.png" alt="Engineering Resources Hub" width="1200" height="380" />
+        </Link>
         <button className="menu-toggle" type="button" aria-expanded={menuOpen} aria-controls="primary-nav" onClick={() => setMenuOpen(!menuOpen)}>
           <span className="sr-only">{menuOpen ? 'Close navigation' : 'Open navigation'}</span>
           <span /><span />
@@ -78,7 +117,7 @@ function SiteHeader() {
 function HeroSearch() {
   const [searchText, setSearchText] = useState('');
   const [message, setMessage] = useState('Search is being built. You can browse the verified departments below.');
-  const suggestions = ['Computer Engineering', 'Electrical Engineering', 'Past questions'];
+  const suggestions = ['Computer Engineering', 'Electrical and Electronics Engineering', 'Past questions'];
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -136,7 +175,7 @@ function DepartmentCard({ department, index }: { department: Department; index: 
     <article className={`discipline-card discipline-tone-${index % 4}`}>
       <div className="discipline-top"><span className="discipline-icon">{initials}</span><span className="card-arrow"><ArrowIcon /></span></div>
       <div><p className="card-kicker">UNIVERSITY OF LAGOS</p><h3>{department.name}</h3><p className="discipline-description">{descriptions[department.slug] ?? 'Explore courses and academic resources for this department.'}</p></div>
-      <a className="text-link" href="#courses">Explore department <ArrowIcon /></a>
+      <Link className="text-link" to={`/universities/${department.universitySlug}/faculties/${department.facultySlug}/departments/${department.slug}`}>Explore department <ArrowIcon /></Link>
     </article>
   );
 }
@@ -145,9 +184,9 @@ function EmptyCatalogCard({ title, message, action, href }: { title: string; mes
   return <div className="empty-catalog"><div className="empty-icon" aria-hidden="true">＋</div><div><h3>{title}</h3><p>{message}</p></div><a className="text-link" href={href}>{action} <ArrowIcon /></a></div>;
 }
 
-function App() {
+function LandingPage() {
   const universityQuery = useQuery({ queryKey: ['university', 'university-of-lagos'], queryFn: fetchUniversity });
-  const departments = universityQuery.data?.faculties.flatMap((faculty) => faculty.departments) ?? [];
+  const departments = universityQuery.data?.faculties.flatMap((faculty) => faculty.departments.map((department) => ({ ...department, facultySlug: faculty.slug, universitySlug: universityQuery.data?.slug }))) ?? [];
   const facultyCount = universityQuery.data?.faculties.length ?? 0;
 
   return (
@@ -209,12 +248,59 @@ function App() {
       </main>
 
       <footer className="site-footer">
-        <div className="footer-main"><a className="brand footer-brand" href="#home"><span className="brand-mark" aria-hidden="true">E<span>+</span></span><span className="brand-name">Eng<span>Hub</span></span></a><p>Engineering knowledge, shared openly.</p>
+        <div className="footer-main"><Link className="brand footer-brand" to="/"><img className="brand-logo" src="/engineering-resources-hub-logo.png" alt="Engineering Resources Hub" width="1200" height="380" /></Link><p>Engineering knowledge, shared openly.</p>
           <nav className="footer-links" aria-label="Footer navigation"><a href="#courses">Explore courses</a><a href="#resources">Resources</a><a href="#universities">Universities</a><a href="#about">About</a><span>Contact <small>soon</small></span></nav>
         </div>
         <div className="footer-bottom"><span>© {new Date().getFullYear()} EngHub. Open knowledge for engineering.</span><div><span>Privacy policy coming soon</span><span>Terms of service coming soon</span></div></div>
       </footer>
     </div>
+  );
+}
+
+function DepartmentPage() {
+  const { universitySlug = '', facultySlug = '', departmentSlug = '' } = useParams();
+  const departmentQuery = useQuery({
+    queryKey: ['department', universitySlug, facultySlug, departmentSlug],
+    queryFn: () => fetchDepartment(universitySlug, facultySlug, departmentSlug),
+    enabled: Boolean(universitySlug && facultySlug && departmentSlug),
+  });
+  const department = departmentQuery.data;
+
+  return (
+    <div className="site-shell">
+      <SiteHeader />
+      <main className="department-page">
+        <div className="department-page-inner">
+          <a className="text-link back-link" href="/#disciplines">← All departments</a>
+          {departmentQuery.isPending && <div className="catalog-message" role="status">Loading department details…</div>}
+          {departmentQuery.isError && <div className="catalog-message catalog-error" role="alert"><span>{departmentQuery.error.message}</span><button onClick={() => void departmentQuery.refetch()}>Try again</button></div>}
+          {department && <>
+            <p className="eyebrow">UNIVERSITY OF LAGOS · {department.faculty.name.toUpperCase()}</p>
+            <h1 className="department-title">{department.name}</h1>
+            <p className="department-intro">Browse the programmes and courses in this department. Course information is shown here after it has been validated and added.</p>
+            {department.programmes.length === 0 ? (
+              <div className="empty-catalog department-empty"><div className="empty-icon" aria-hidden="true">＋</div><div><h2>Programme details are being prepared</h2><p>Verified programme and course information will appear here when it is ready.</p></div></div>
+            ) : department.programmes.map((programme) => (
+              <section className="programme-card" key={programme.id}>
+                <div className="programme-heading"><div><p className="card-kicker">ACADEMIC PROGRAMME</p><h2>{programme.name}</h2></div><span>{programme.award ?? 'Programme'}{programme.durationYears ? ` · ${programme.durationYears} years` : ''}</span></div>
+                {programme.courses.length ? <div className="course-list">{programme.courses.map((course) => <article className="course-row" key={course.id}><div><strong>{course.code}</strong><span>{course.title}</span>{course.offerings.map((offering) => <small className="course-context" key={`${offering.academicSession.label}-${offering.semester.label}`}>{offering.semester.programmeLevel.label ?? `${offering.semester.programmeLevel.code} Level`} · {offering.semester.label} · {offering.academicSession.label}</small>)}</div>{course.creditUnits !== null && <small className="course-credits">{course.creditUnits} units</small>}</article>)}</div> : <p className="programme-empty">Course records will appear after they have been validated.</p>}
+                {programme.levels.length > 0 && <div className="level-list"><h3>Programme structure</h3>{programme.levels.map((level) => <div className="level-row" key={level.id}><strong>{level.label ?? level.code} Level</strong><span>{level.semesters.length ? level.semesters.map((semester) => semester.label).join(' · ') : 'Semester details pending'}</span></div>)}</div>}
+              </section>
+            ))}
+          </>}
+        </div>
+      </main>
+      <footer className="site-footer"><div className="footer-main"><Link className="brand footer-brand" to="/"><img className="brand-logo" src="/engineering-resources-hub-logo.png" alt="Engineering Resources Hub" width="1200" height="380" /></Link><p>Engineering knowledge, shared openly.</p></div><div className="footer-bottom"><span>© {new Date().getFullYear()} EngHub. Open knowledge for engineering.</span></div></footer>
+    </div>
+  );
+}
+
+function App() {
+  return (
+    <Routes>
+      <Route path="/universities/:universitySlug/faculties/:facultySlug/departments/:departmentSlug" element={<DepartmentPage />} />
+      <Route path="*" element={<LandingPage />} />
+    </Routes>
   );
 }
 

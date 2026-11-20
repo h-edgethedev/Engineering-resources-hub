@@ -1,0 +1,27 @@
+
+I'm continuing development on this project from another computer.
+
+Before doing anything:
+
+1. Read AGENTS.md.
+2. Read PROJECT_CONTEXT.md.
+3. Read SESSION_NOTES.md.
+4. Inspect the current Git branch.
+5. Run git status and inspect uncommitted changes.
+6. Understand the current implementation before proposing changes.
+
+Your responsibility is to continue from the exact development state
+described in SESSION_NOTES.md.
+
+Do not repeat completed tasks.
+Do not overwrite existing work.
+Do not assume that the local development environment is identical
+to the previous computer.
+
+First, summarize:
+- What has already been implemented.
+- What is currently being worked on.
+- What remains outstanding.
+- What you recommend doing next.
+
+Wait for my confirmation before making significant changes.

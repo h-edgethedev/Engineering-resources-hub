@@ -1,26 +1,33 @@
+import cors from 'cors';
 import express, { type Express } from 'express';
-import type { HealthResponse } from '@erh/shared';
-import { academicRouter } from './modules/academics/academic.routes.js';
+import { env } from './config/env.js';
+import { errorHandler } from './middleware/errorHandler.js';
+import { notFoundHandler } from './middleware/notFoundHandler.js';
+import { checkDatabaseConnection } from './modules/health/health.service.js';
+import { createHealthRouter } from './modules/health/health.routes.js';
+import { apiRouter } from './routes/index.js';
 
-export function createApp(): Express {
+export interface AppDependencies {
+  databaseHealthCheck?: () => Promise<void>;
+}
+
+export function createApp(dependencies: AppDependencies = {}): Express {
   const app = express();
+  const databaseHealthCheck = dependencies.databaseHealthCheck ?? checkDatabaseConnection;
 
-  app.get('/health', (_request, response) => {
-    const body: HealthResponse = {
-      status: 'ok',
-      service: 'engineering-resources-hub-api',
-    };
-    response.json(body);
+  app.disable('x-powered-by');
+  app.use((_request, response, next) => {
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    response.setHeader('X-Frame-Options', 'DENY');
+    response.setHeader('Referrer-Policy', 'no-referrer');
+    next();
   });
-
-  app.use('/api/v1', academicRouter);
-
-  app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
-    console.error('Unhandled API error.', error);
-    response.status(500).json({
-      error: { code: 'INTERNAL_SERVER_ERROR', message: 'An unexpected error occurred.' },
-    });
-  });
+  app.use(cors({ origin: env.webOrigin }));
+  app.use(express.json({ limit: '1mb' }));
+  app.use('/health', createHealthRouter(databaseHealthCheck));
+  app.use('/api/v1', apiRouter);
+  app.use(notFoundHandler);
+  app.use(errorHandler);
 
   return app;
 }

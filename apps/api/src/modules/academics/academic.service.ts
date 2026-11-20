@@ -81,7 +81,23 @@ export async function findDepartmentInUniversity(
           courses: {
             where: { status: 'ACTIVE' },
             orderBy: { code: 'asc' },
-            select: { id: true, code: true, title: true, creditUnits: true },
+            select: {
+              id: true,
+              code: true,
+              title: true,
+              creditUnits: true,
+              offerings: {
+                select: {
+                  academicSession: { select: { label: true } },
+                  semester: {
+                    select: {
+                      label: true,
+                      programmeLevel: { select: { code: true, label: true } },
+                    },
+                  },
+                },
+              },
+            },
           },
         },
       },

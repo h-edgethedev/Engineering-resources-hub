@@ -27,7 +27,7 @@ The platform is being built incrementally. This foundation provides a native-dev
    npm run db:migrate
    ```
 
-5. Add the agreed UNILAG academic hierarchy (university, faculty and two departments; no courses are inserted):
+5. Seed the agreed UNILAG academic hierarchy and the owner-confirmed Computer Engineering offerings for 100 and 200 Level:
 
    ```sh
    npm run db:seed
@@ -52,14 +52,16 @@ The API health endpoint is `http://localhost:4000/health`; the web app runs at `
 | `npm run build` | Build shared package, API and web app |
 | `npm run db:generate` | Generate Prisma client |
 | `npm run db:migrate` | Create/apply a local development migration |
-| `npm run db:seed` | Insert or update the agreed initial UNILAG structure |
+| `npm run db:seed` | Insert or update UNILAG structure and Computer Engineering course offerings |
 | `npm run db:studio` | Open Prisma Studio |
+| `npm run test:api` | Run Express endpoint and health-check tests |
 
 ## Project documents
 
 - [Product requirements](docs/PRODUCT_REQUIREMENTS.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Database design](docs/DATABASE_DESIGN.md)
+- [API documentation](docs/API_DOCUMENTATION.md)
 - [MIT License](LICENSE) (applies to software, not uploaded academic documents)
 
 ## Current milestone
