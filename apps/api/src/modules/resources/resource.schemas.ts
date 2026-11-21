@@ -14,14 +14,6 @@ export const resourceTypes = [
 
 export const resourceStatuses = ['PENDING', 'APPROVED', 'REJECTED', 'REMOVED'] as const;
 
-const resourceFileSchema = z.object({
-  provider: z.string().trim().min(1).max(50),
-  storageKey: z.string().trim().min(1).max(1024),
-  originalFilename: z.string().trim().min(1).max(255),
-  mediaType: z.string().regex(/^[\w!#$&^_.+-]+\/[\w!#$&^_.+-]+$/, 'must be a valid media type'),
-  byteSize: z.number().int().positive().max(2_147_483_647),
-}).strict();
-
 const resourceFields = {
   courseId: uuid,
   academicSessionId: uuid.nullable().optional(),
@@ -29,7 +21,6 @@ const resourceFields = {
   title: z.string().trim().min(1).max(250),
   description: z.string().trim().max(10_000).nullable().optional(),
   type: z.enum(resourceTypes),
-  file: resourceFileSchema,
 };
 
 export const createResourceSchema = z.object(resourceFields).strict();
@@ -40,7 +31,6 @@ export const updateResourceSchema = z.object({
   title: resourceFields.title.optional(),
   description: resourceFields.description,
   type: resourceFields.type.optional(),
-  file: resourceFields.file.optional(),
 }).strict().refine((value) => Object.keys(value).length > 0, 'provide at least one field to update');
 
 export const resourceIdParamsSchema = z.object({ resourceId: uuid });

@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { resolve } from 'node:path';
 import { z } from 'zod';
 
 const environmentSchema = z.object({
@@ -15,6 +16,8 @@ const environmentSchema = z.object({
         return false;
       }
     }, 'must be a valid PostgreSQL connection URL'),
+  RESOURCE_STORAGE_DIR: z.string().min(1).default(resolve(process.cwd(), '.data/uploads')),
+  RESOURCE_MAX_FILE_SIZE_BYTES: z.coerce.number().int().min(1).max(100 * 1024 * 1024).default(20 * 1024 * 1024),
 });
 
 const result = environmentSchema.safeParse(process.env);
@@ -31,4 +34,6 @@ export const env = {
   apiPort: result.data.API_PORT,
   webOrigin: result.data.WEB_ORIGIN,
   databaseUrl: result.data.DATABASE_URL,
+  resourceStorageDir: result.data.RESOURCE_STORAGE_DIR,
+  resourceMaxFileSizeBytes: result.data.RESOURCE_MAX_FILE_SIZE_BYTES,
 } as const;

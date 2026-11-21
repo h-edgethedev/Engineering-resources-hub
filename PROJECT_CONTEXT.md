@@ -18,7 +18,7 @@ Root commands include `npm run dev:web`, `npm run dev:api`, `npm run typecheck`,
 
 - Health: `GET /health`, `/health/live`, `/health/ready`.
 - Academic data: list universities; fetch a university with its faculty/department hierarchy; list faculties, departments, and programmes; fetch department/programme details; list courses with university, faculty, department, level, session, semester, and pagination filters; fetch a course by UUID.
-- Resource metadata: create, list/filter, retrieve, update, and delete course-linked resources. Resource types and approval statuses are modeled; newly created resources begin in `PENDING` status.
+- Resources: create, list/filter, retrieve, update, and delete course-linked resources. Creation accepts validated multipart file uploads; local development storage, inline viewing, and download endpoints are implemented. New resources begin in `PENDING` status.
 - Success responses use a `data` property; course lists also return pagination `meta`. Errors use an `error` object with a code and message.
 - `apps/api/test` contains HTTP-level tests. Academic route tests mock Prisma so they do not require PostgreSQL.
 
@@ -32,7 +32,7 @@ This is a product proposal only. Authentication, user accounts, role/permission 
 
 Prisma is configured for PostgreSQL. The schema is in `apps/api/prisma/schema.prisma`; the generated client is configured at `apps/api/src/generated/prisma` and that generated directory is ignored by Git. The database adapter is `@prisma/adapter-pg` with `pg` and reads `DATABASE_URL`.
 
-The implemented schema contains `University`, `Faculty`, `Department`, `Programme`, `ProgrammeLevel`, `Semester`, `AcademicSession`, `ProgrammeSession`, `Course`, `CourseOffering`, `Resource`, and `ResourceFile`. Resource records reference a course and optionally an academic session and semester; file metadata records a provider and storage key. The resource API does not upload, download, or remove external binary files. Its new migration is under `apps/api/prisma/migrations/`. `apps/api/prisma/seed.ts` imports `docs/COMPUTER_ENGINEERING_COURSE_REVIEW.csv`, validates 36 Computer Engineering offerings for 100 and 200 Level, and upserts the UNILAG hierarchy. It also creates the Electrical and Electronics Engineering department, but current imported course rows target Computer Engineering.
+The implemented schema contains `University`, `Faculty`, `Department`, `Programme`, `ProgrammeLevel`, `Semester`, `AcademicSession`, `ProgrammeSession`, `Course`, `CourseOffering`, `Resource`, and `ResourceFile`. Resource records reference a course and optionally an academic session and semester; file metadata records a provider and storage key. Binary files use the `ResourceStorage` interface with local development storage in `.data/uploads` by default; Cloudflare R2 support is future work. `apps/api/prisma/seed.ts` imports `docs/COMPUTER_ENGINEERING_COURSE_REVIEW.csv`, validates 36 Computer Engineering offerings for 100 and 200 Level, and upserts the UNILAG hierarchy. It also creates the Electrical and Electronics Engineering department, but current imported course rows target Computer Engineering.
 
 Environment configuration uses `DATABASE_URL`, `API_PORT`, `WEB_ORIGIN`, and `NODE_ENV`. `.env.example` documents placeholders. Local `.env` files may exist and are ignored by Git; never copy their values into project notes or source control.
 

@@ -1,6 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const db = vi.hoisted(() => ({
   resource: { count: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
@@ -8,7 +12,15 @@ const db = vi.hoisted(() => ({
   courseOffering: { findFirst: vi.fn() },
 }));
 
+const storage = vi.hoisted(() => ({
+  provider: 'local',
+  put: vi.fn(async () => ({ storageKey: 'generated/resource.pdf' })),
+  get: vi.fn(),
+  delete: vi.fn(async () => undefined),
+}));
+
 vi.mock('../src/infrastructure/database.js', () => ({ prisma: db }));
+vi.mock('../src/modules/resources/storage.js', () => ({ resourceStorage: storage }));
 
 const { createApp } = await import('../src/app.js');
 const servers: Server[] = [];
@@ -37,8 +49,15 @@ const payload = {
   title: 'Lecture 1 notes',
   description: 'Introduction notes',
   type: 'LECTURE_NOTE',
-  file: { provider: 'local', storageKey: 'resources/cpe101/notes.pdf', originalFilename: 'notes.pdf', mediaType: 'application/pdf', byteSize: 4096 },
 };
+let testFilePath: string;
+
+async function uploadForm(overrides: Record<string, string> = {}, fileName = 'notes.pdf', contents = '%PDF-1.7 test pdf', mimeType = 'application/pdf') {
+  const form = new FormData();
+  for (const [key, value] of Object.entries({ ...payload, ...overrides })) form.append(key, value);
+  form.append('file', new Blob([contents], { type: mimeType }), fileName);
+  return form;
+}
 
 async function request(path: string, init?: RequestInit) {
   const server = createApp({ databaseHealthCheck: async () => undefined }).listen(0);
@@ -55,6 +74,14 @@ afterEach(async () => {
   })));
 });
 
+beforeAll(async () => {
+  testFilePath = join(await mkdtemp(join(tmpdir(), 'enghub-test-')), 'sample.pdf');
+  await writeFile(testFilePath, '%PDF-1.7 test pdf');
+  storage.get.mockImplementation(async () => createReadStream(testFilePath));
+});
+
+afterAll(async () => { await rm(join(testFilePath, '..'), { recursive: true, force: true }); });
+
 beforeEach(() => {
   vi.clearAllMocks();
   db.resource.count.mockResolvedValue(1);
@@ -63,17 +90,20 @@ beforeEach(() => {
   db.resource.create.mockResolvedValue(resource);
   db.resource.update.mockResolvedValue({ ...resource, title: 'Updated title' });
   db.resource.delete.mockResolvedValue(resource);
+  storage.put.mockResolvedValue({ storageKey: 'generated/resource.pdf' });
   db.course.findFirst.mockResolvedValue({ id: courseId });
   db.courseOffering.findFirst.mockResolvedValue({ courseId });
 });
 
 describe('resource management endpoints', () => {
   it('creates a pending resource linked to a course and file metadata', async () => {
-    const response = await request('/api/v1/resources', json(payload));
+    const response = await request('/api/v1/resources', { method: 'POST', body: await uploadForm() });
     expect(response.status).toBe(201);
-    await expect(response.json()).resolves.toMatchObject({ data: { status: 'PENDING', course: { id: courseId }, file: { storageKey: payload.file.storageKey } } });
+    await expect(response.json()).resolves.toMatchObject({ data: { status: 'PENDING', course: { id: courseId }, file: { originalFilename: 'notes.pdf' } } });
     expect(db.resource.create.mock.calls[0][0].data.status).toBe('PENDING');
-    expect(db.resource.create.mock.calls[0][0].data.file.create.storageKey).toBe(payload.file.storageKey);
+    expect(db.resource.create.mock.calls[0][0].data.file.create).toMatchObject({
+      provider: 'local', storageKey: 'generated/resource.pdf', originalFilename: 'notes.pdf', mediaType: 'application/pdf',
+    });
   });
 
   it('lists resources with filters and pagination', async () => {
@@ -87,6 +117,27 @@ describe('resource management endpoints', () => {
     const response = await request(`/api/v1/resources/${resourceId}`);
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ data: { id: resourceId, file: { mediaType: 'application/pdf' } } });
+  });
+
+  it('serves the stored file inline and as an attachment', async () => {
+    const inline = await request(`/api/v1/resources/${resourceId}/file`);
+    expect(inline.status).toBe(200);
+    expect(inline.headers.get('content-type')).toBe('application/pdf');
+    expect(inline.headers.get('content-disposition')).toContain('inline');
+    expect(await inline.text()).toContain('%PDF-1.7');
+
+    const download = await request(`/api/v1/resources/${resourceId}/file/download`);
+    expect(download.headers.get('content-disposition')).toContain('attachment');
+  });
+
+  it('rejects mismatched content and unsupported media types', async () => {
+    const badSignature = await request('/api/v1/resources', { method: 'POST', body: await uploadForm({}, 'notes.pdf', 'not really a PDF') });
+    expect(badSignature.status).toBe(415);
+    await expect(badSignature.json()).resolves.toMatchObject({ error: { code: 'INVALID_RESOURCE_FILE_CONTENT' } });
+
+    const unsupported = await request('/api/v1/resources', { method: 'POST', body: await uploadForm({}, 'archive.zip', 'PK', 'application/zip') });
+    expect(unsupported.status).toBe(415);
+    await expect(unsupported.json()).resolves.toMatchObject({ error: { code: 'UNSUPPORTED_RESOURCE_FILE_TYPE' } });
   });
 
   it('updates editable resource metadata', async () => {
@@ -108,11 +159,11 @@ describe('resource management endpoints', () => {
     expect(badId.status).toBe(400);
     await expect(badId.json()).resolves.toMatchObject({ error: { code: 'VALIDATION_ERROR' } });
 
-    const badBody = await request('/api/v1/resources', json({ ...payload, type: 'UNSUPPORTED' }));
+    const badBody = await request('/api/v1/resources', { method: 'POST', body: await uploadForm({ type: 'UNSUPPORTED' }) });
     expect(badBody.status).toBe(400);
     await expect(badBody.json()).resolves.toMatchObject({ error: { code: 'VALIDATION_ERROR' } });
 
-    const attemptedApproval = await request('/api/v1/resources', json({ ...payload, status: 'APPROVED' }));
+    const attemptedApproval = await request('/api/v1/resources', { method: 'POST', body: await uploadForm({ status: 'APPROVED' }) });
     expect(attemptedApproval.status).toBe(400);
     await expect(attemptedApproval.json()).resolves.toMatchObject({ error: { code: 'VALIDATION_ERROR' } });
   });
@@ -124,14 +175,14 @@ describe('resource management endpoints', () => {
     await expect(missing.json()).resolves.toMatchObject({ error: { code: 'RESOURCE_NOT_FOUND' } });
 
     db.course.findFirst.mockResolvedValueOnce(null);
-    const missingCourse = await request('/api/v1/resources', json(payload));
+    const missingCourse = await request('/api/v1/resources', { method: 'POST', body: await uploadForm() });
     expect(missingCourse.status).toBe(404);
     await expect(missingCourse.json()).resolves.toMatchObject({ error: { code: 'COURSE_NOT_FOUND' } });
   });
 
   it('rejects academic session or semester values not offered for the course', async () => {
     db.courseOffering.findFirst.mockResolvedValueOnce(null);
-    const response = await request('/api/v1/resources', json(payload));
+    const response = await request('/api/v1/resources', { method: 'POST', body: await uploadForm() });
     expect(response.status).toBe(422);
     await expect(response.json()).resolves.toMatchObject({ error: { code: 'INVALID_RESOURCE_ACADEMIC_CONTEXT' } });
   });

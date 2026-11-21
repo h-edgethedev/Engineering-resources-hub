@@ -1,4 +1,6 @@
 import type { RequestHandler } from 'express';
+import { rm } from 'node:fs/promises';
+import { basename } from 'node:path';
 import { ApiError } from '../../errors/ApiError.js';
 import {
   createResourceSchema,
@@ -9,6 +11,7 @@ import {
   createResource,
   deleteResource,
   findResourceById,
+  findResourceFile,
   listResources,
   updateResource,
 } from './resource.service.js';
@@ -41,13 +44,34 @@ export const getResourceController: RequestHandler = async (request, response, n
 };
 
 export const createResourceController: RequestHandler = async (request, response, next) => {
+  const file = request.file;
   try {
+    if (!file) throw new ApiError(400, 'RESOURCE_FILE_REQUIRED', 'Upload one file using the multipart field named "file".');
     const parsed = createResourceSchema.safeParse(request.body);
     if (!parsed.success) throw validationError(parsed.error.issues);
-    const resource = await createResource(parsed.data);
+    const resource = await createResource(parsed.data, file);
     response.status(201).json({ data: resource });
   } catch (error) { next(error); }
+  finally { if (file?.path) await rm(file.path, { force: true }).catch(() => undefined); }
 };
+
+export function resourceFileController(disposition: 'inline' | 'attachment'): RequestHandler {
+  return async (request, response, next) => {
+    try {
+      const file = await findResourceFile(resourceId(request));
+      const safeFilename = basename(file.originalFilename).replace(/[\r\n"\\]/g, '_');
+      response.setHeader('Content-Type', file.mediaType);
+      response.setHeader('Content-Disposition', `${disposition}; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(file.originalFilename)}`);
+      response.setHeader('X-Content-Type-Options', 'nosniff');
+      const stream = file.stream;
+      stream.on('error', (error) => {
+        if (response.headersSent) response.destroy(error);
+        else next(new ApiError(404, 'RESOURCE_FILE_NOT_FOUND', 'The resource file was not found.'));
+      });
+      stream.pipe(response);
+    } catch (error) { next(error); }
+  };
+}
 
 export const updateResourceController: RequestHandler = async (request, response, next) => {
   try {

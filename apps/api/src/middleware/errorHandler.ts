@@ -1,8 +1,14 @@
 import type { ErrorRequestHandler } from 'express';
+import multer from 'multer';
 import { ApiError } from '../errors/ApiError.js';
 
 function normalizeError(error: unknown): ApiError {
   if (error instanceof ApiError) return error;
+
+  if (error instanceof multer.MulterError) {
+    if (error.code === 'LIMIT_FILE_SIZE') return new ApiError(413, 'RESOURCE_FILE_TOO_LARGE', 'The uploaded file exceeds the configured size limit.');
+    return new ApiError(400, 'INVALID_MULTIPART_REQUEST', 'The upload must contain one file and valid metadata fields.');
+  }
 
   if (typeof error === 'object' && error !== null && 'type' in error) {
     if (error.type === 'entity.parse.failed') {
