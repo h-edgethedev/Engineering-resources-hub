@@ -48,6 +48,9 @@ export async function findLoginUser(input: LoginInput) {
   if (!user || user.status !== 'ACTIVE' || !passwordMatches) {
     throw new ApiError(401, 'INVALID_CREDENTIALS', 'Email or password is incorrect.');
   }
+  if (!user.emailVerifiedAt) {
+    throw new ApiError(403, 'EMAIL_NOT_VERIFIED', 'Verify your email before signing in. You can request a new verification link.');
+  }
   return prisma.user.findUniqueOrThrow({ where: { id: user.id }, select: publicUserSelect });
 }
 

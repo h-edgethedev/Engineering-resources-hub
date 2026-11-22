@@ -2,7 +2,7 @@
 
 An open-source academic resource platform launching at the University of Lagos (UNILAG). The initial departments are Computer Engineering and Electrical and Electronics Engineering within the Faculty of Engineering. The project owner will validate course data before it is added.
 
-The platform is being built incrementally. This foundation provides a native-development TypeScript monorepo and the first academic-structure database schema. Authentication, uploads and other product workflows are not implemented yet.
+The platform is being built incrementally. The current implementation includes the UNILAG academic API, local file uploads, moderation and role authorization, email-verified accounts, and a web resource submission flow. The moderation queue UI, search, account recovery, and cloud storage remain in progress.
 
 ## Requirements
 
@@ -66,4 +66,4 @@ The API health endpoint is `http://localhost:4000/health`; the web app runs at `
 
 ## Current milestone
 
-Phase 1 establishes project structure, local development, and the initial academic hierarchy. No login, file upload, moderation UI or production storage workflow is available yet. See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for the development workflow.
+The web app supports registration with email verification, login, account sessions, and submissions from Students, Contributors, and Super Administrators. In development, verification links appear in the API console unless SMTP is configured. Production requires `EMAIL_SMTP_URL` and `EMAIL_FROM`. The moderator review queue is the next planned web workflow. See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for the development workflow.

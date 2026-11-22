@@ -15,7 +15,7 @@ The platform is a discovery and contribution layer, not a blanket licence for th
 | Contributor | Submit and maintain own resources; cannot approve or reject any resource |
 | Moderator | University-wide review scope; approve/reject pending resources and remove resources, except own submissions |
 | University Administrator | Manage users, role grants, and academic structures inside one university |
-| Super Administrator | Platform-wide user, role, academic, moderation, and settings authority; cannot approve own submissions |
+| Super Administrator | Platform-wide user, role, academic, moderation, settings, and resource submission authority; cannot approve own submissions |
 
 Authorization is enforced by the API. Frontend checks are for usability only. Academic profile fields are optional. Public resource access does not require an account.
 
@@ -51,6 +51,7 @@ The first implementation policy is recorded in `AUTHORIZATION_POLICY.md`. Every 
 ### 4.3 Community and accounts
 
 - Provide registration, login, logout, session management, profile management and role-based authorization.
+- Require email verification before a new account can sign in; verification links must expire and be single-use.
 - Hash passwords with Argon2 or bcrypt; use HTTP-only cookies and appropriate CSRF protections.
 - Support bookmarks, comments/reviews, solution submissions, reports and contribution history for authenticated students.
 - Design solution records to allow multiple submissions per question and later verification.

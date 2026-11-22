@@ -17,7 +17,7 @@ import { moderateResourceController } from './resource.controller.js';
 export const resourceRouter = Router();
 
 resourceRouter.get('/', listResourcesController);
-resourceRouter.post('/', requireAuth, requireAnyRole('STUDENT', 'CONTRIBUTOR'), resourceUpload, createResourceController);
+resourceRouter.post('/', requireAuth, requireAnyRole('STUDENT', 'CONTRIBUTOR', 'SUPER_ADMIN'), resourceUpload, createResourceController);
 resourceRouter.post('/:resourceId/moderation', requireAuth, requireAnyRole('SUPER_ADMIN', 'MODERATOR', 'UNIVERSITY_ADMIN'), validateRequest({ params: resourceIdParamsSchema, body: moderationSchema }), moderateResourceController);
 resourceRouter.get('/:resourceId/file', validateRequest({ params: resourceIdParamsSchema }), resourceFileController('inline'));
 resourceRouter.get('/:resourceId/file/download', validateRequest({ params: resourceIdParamsSchema }), resourceFileController('attachment'));

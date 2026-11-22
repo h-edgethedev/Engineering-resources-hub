@@ -7,11 +7,11 @@ This document records the initial implementation policy selected on 2026-11-21. 
 | Role | Scope | Capabilities |
 |---|---|---|
 | Guest | No account | Browse academic data and view/download approved public resources. No uploads, bookmarks, comments, or account actions. |
-| Student | Registered account; academic affiliation may be optional | Guest capabilities plus account features such as bookmarks, comments, reports, profile, contribution history, and resource submission. New submissions remain private and pending until review. |
+| Student | Registered, email-verified account; academic affiliation may be optional | Guest capabilities plus account features such as bookmarks, comments, reports, profile, contribution history, and resource submission. New submissions remain private and pending until review. |
 | Contributor | University grant | Submit and maintain resources they own. Cannot approve or reject submissions, including their own. |
 | Moderator | Required university grant; university-wide for this release | Review, approve, reject, and remove resources in the assigned university. Cannot review or approve a resource they own. Cannot grant roles or edit the academic catalogue. |
 | University Administrator | Required university grant | Manage users and academic catalogue records inside the assigned university. Cannot manage Super Administrators or grant permissions outside that university. |
-| Super Administrator | Platform-wide | Manage platform settings, users, role grants, and academic records across universities. May perform moderation, subject to the rule that no person can approve their own resource. |
+| Super Administrator | Platform-wide | Manage platform settings, users, role grants, and academic records across universities; may also submit resources. May perform moderation, subject to the rule that no person can approve their own resource. |
 
 Guest is an anonymous access mode, not a persisted role. Role assignments are server-managed and never accepted from client-supplied request fields. A user may hold several role grants; permissions combine, but resource ownership and scope restrictions below still apply.
 
@@ -35,4 +35,4 @@ Guest is an anonymous access mode, not a persisted role. Role assignments are se
 
 ## Implementation status
 
-The API now enforces registration/login/logout, server-side sessions, CSRF tokens for authenticated mutations, role grants, uploader ownership, approved-only guest access, university-wide moderation, and self-moderation prevention. The initial Super Administrator uses a one-time bootstrap command. Account suspension administration, academic-structure write APIs, frontend auth screens, email verification, account recovery, malware scanning, and production deployment controls are not implemented.
+The API now enforces email-verified registration/login/logout, server-side sessions, CSRF tokens for authenticated mutations, role grants, uploader ownership, approved-only guest access, university-wide moderation, and self-moderation prevention. Student, Contributor, and Super Administrator accounts may submit resources. The web app includes auth screens, email verification, and resource submission. The initial Super Administrator uses a one-time bootstrap command and is marked verified at creation. Account suspension administration, academic-structure write APIs, account recovery, malware scanning, and production deployment controls are not implemented.

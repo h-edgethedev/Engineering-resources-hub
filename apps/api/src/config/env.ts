@@ -18,6 +18,18 @@ const environmentSchema = z.object({
     }, 'must be a valid PostgreSQL connection URL'),
   RESOURCE_STORAGE_DIR: z.string().min(1).default(resolve(process.cwd(), '.data/uploads')),
   RESOURCE_MAX_FILE_SIZE_BYTES: z.coerce.number().int().min(1).max(100 * 1024 * 1024).default(20 * 1024 * 1024),
+  EMAIL_SMTP_URL: z.string().url().refine((value) => {
+    try { return ['smtp:', 'smtps:'].includes(new URL(value).protocol); }
+    catch { return false; }
+  }, 'must use smtp: or smtps:').optional(),
+  EMAIL_FROM: z.string().trim().min(3).optional(),
+}).superRefine((values, context) => {
+  if (Boolean(values.EMAIL_SMTP_URL) !== Boolean(values.EMAIL_FROM)) {
+    context.addIssue({ code: 'custom', path: ['EMAIL_SMTP_URL'], message: 'EMAIL_SMTP_URL and EMAIL_FROM must be configured together.' });
+  }
+  if (values.NODE_ENV === 'production' && (!values.EMAIL_SMTP_URL || !values.EMAIL_FROM)) {
+    context.addIssue({ code: 'custom', path: ['EMAIL_SMTP_URL'], message: 'SMTP email delivery must be configured in production.' });
+  }
 });
 
 const result = environmentSchema.safeParse(process.env);
@@ -36,4 +48,6 @@ export const env = {
   databaseUrl: result.data.DATABASE_URL,
   resourceStorageDir: result.data.RESOURCE_STORAGE_DIR,
   resourceMaxFileSizeBytes: result.data.RESOURCE_MAX_FILE_SIZE_BYTES,
+  emailSmtpUrl: result.data.EMAIL_SMTP_URL,
+  emailFrom: result.data.EMAIL_FROM,
 } as const;

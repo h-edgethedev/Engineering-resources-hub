@@ -31,6 +31,7 @@ async function main() {
       email,
       displayName,
       passwordHash,
+      emailVerifiedAt: new Date(),
       roleAssignments: { create: { role: 'SUPER_ADMIN', scopeKey: 'global' } },
     },
     select: { id: true, email: true },

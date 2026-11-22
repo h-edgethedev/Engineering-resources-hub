@@ -4,7 +4,7 @@ The API is an Express 5 REST service. The app composition lives in `apps/api/src
 
 ## Configuration
 
-Copy `.env.example` to `.env`. Startup validates `NODE_ENV`, `API_PORT`, `WEB_ORIGIN`, PostgreSQL `DATABASE_URL`, and resource storage settings with Zod. Invalid values stop startup with field names and messages; secret values are not printed. JSON request bodies are limited to 1 MB. CORS permits the configured web origin with credentials for session cookies.
+Copy `.env.example` to `.env`. Startup validates `NODE_ENV`, `API_PORT`, `WEB_ORIGIN`, PostgreSQL `DATABASE_URL`, resource storage, and email settings with Zod. Set `EMAIL_SMTP_URL` and `EMAIL_FROM` together for SMTP delivery; both are required in production. In development without them, verification links are printed by the API for local testing. Invalid values stop startup with field names and messages; secret values are not printed. JSON request bodies are limited to 1 MB. CORS permits the configured web origin with credentials for session cookies.
 
 ## Health endpoints
 
@@ -20,19 +20,21 @@ The readiness endpoint returns `200` when ready and `503` when the database chec
 
 | Method | Path | Purpose |
 |---|---|---|
-| `POST` | `/api/v1/auth/register` | Create an active Student account and start a session |
+| `POST` | `/api/v1/auth/register` | Create an unverified Student account and send a verification link |
 | `POST` | `/api/v1/auth/login` | Authenticate and start a session |
+| `POST` | `/api/v1/auth/verify-email` | Verify an email using a one-time token |
+| `POST` | `/api/v1/auth/resend-verification` | Request a new verification link without revealing account existence |
 | `GET` | `/api/v1/auth/me` | Get the signed-in account and role grants |
 | `GET` | `/api/v1/auth/csrf` | Rotate and return a CSRF token after a page reload |
 | `POST` | `/api/v1/auth/logout` | Revoke the current server-side session |
 | `POST` | `/api/v1/auth/admin/users/:userId/roles` | Grant a scoped role if permitted |
 | `DELETE` | `/api/v1/auth/admin/role-assignments/:grantId` | Revoke a scoped role if permitted |
 
-Registration requires `email`, `displayName`, and a password of at least 12 characters and at most 72 UTF-8 bytes. Passwords are bcrypt-hashed. Sessions use random opaque tokens in an HTTP-only, SameSite=Lax cookie; only the token hash is stored in PostgreSQL. Login and registration are limited to 10 attempts per IP per 15 minutes in the current in-memory limiter. Configure a shared rate-limit store before running multiple API instances.
+Registration requires `email`, `displayName`, and a password of at least 12 characters and at most 72 UTF-8 bytes. Passwords are bcrypt-hashed. New users must verify their email before login; verification links expire after 30 minutes and are single-use. Only a hash of each verification token is stored. Existing users are marked verified by the migration, and the bootstrap Super Administrator is created verified. Login sessions use random opaque tokens in an HTTP-only, SameSite=Lax cookie; only the token hash is stored in PostgreSQL. Login and registration are limited to 10 attempts per IP per 15 minutes; verification requests have a separate in-memory limit. Configure a shared rate-limit store before running multiple API instances.
 
-The CSRF token is returned by register/login and can be refreshed from `/auth/csrf`. Send it in the `X-CSRF-Token` header with every signed-in POST, PUT, PATCH, or DELETE request. The browser must send credentials. Production session and CSRF cookies use the `Secure` attribute.
+The CSRF token is returned by login and can be refreshed from `/auth/csrf`. Registration does not create a session until email verification and subsequent login. Send the CSRF token in the `X-CSRF-Token` header with every signed-in POST, PUT, PATCH, or DELETE request. The browser must send credentials. Production session and CSRF cookies use the `Secure` attribute.
 
-New accounts receive the Student role. Students may submit resources; submissions remain private and pending until moderated. A University Administrator can grant Moderator or Contributor roles inside their own university. Only a Super Administrator can grant University Administrator or Super Administrator roles. Guest is anonymous public access, not an account role. The first Super Administrator is created from the repository root with `npm run auth:bootstrap-admin`, with `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_NAME`, and `BOOTSTRAP_ADMIN_PASSWORD` set only in that command's process environment. Never commit or add bootstrap credentials to `.env.example`.
+New accounts receive the Student role after signup and must verify their email before signing in. Students, Contributors, and Super Administrators may submit resources; submissions remain private and pending until moderated. A University Administrator can grant Moderator or Contributor roles inside their own university. Only a Super Administrator can grant University Administrator or Super Administrator roles. Guest is anonymous public access, not an account role. The first Super Administrator is created from the repository root with `npm run auth:bootstrap-admin`, with `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_NAME`, and `BOOTSTRAP_ADMIN_PASSWORD` set only in that command's process environment. Never commit or add bootstrap credentials to `.env.example`.
 
 ## Academic endpoints
 
@@ -63,7 +65,7 @@ New accounts receive the Student role. Students may submit resources; submission
 
 Create uses `multipart/form-data` with one `file` field and the `courseId`, `title`, and `type` fields. Optional text fields are `description`, `academicSessionId`, and `semesterId`. Supported file formats are PDF, legacy and OpenXML Word/PowerPoint/Excel documents, and plain text. The API checks the filename extension and declared media type, then checks file signatures for PDF and office documents. Uploads default to a 20 MiB limit; configure `RESOURCE_MAX_FILE_SIZE_BYTES` to change it (maximum 100 MiB). The local storage directory defaults to `.data/uploads` in the API working directory and can be changed with `RESOURCE_STORAGE_DIR`. Storage keys are generated by the API and are not accepted from clients. Resource types are `LECTURE_NOTE`, `TEXTBOOK`, `PAST_QUESTION`, `SOLUTION`, `LAB_MANUAL`, `PROGRAMMING_EXERCISE`, and `OTHER`. If a session or semester is supplied, it must match an offering for the selected course. New resources are always `PENDING`; the CRUD API does not accept approval status changes. Deleting a resource also removes its locally stored binary.
 
-The storage provider is behind a `ResourceStorage` interface; local filesystem storage is implemented for development, while an R2 adapter is future work. Files are streamed for inline viewing or attachment downloads. Guests see only approved resources. Signed-in users can access approved resources and their own submissions; moderators and administrators can access records in their university scope. Students and Contributors can upload, owners can maintain their own submissions, and moderators can approve/reject only pending resources in their university. Self-moderation is denied; moderation actions are audited. Cookie-authenticated mutations require CSRF tokens. Email verification, account recovery, web authentication screens, and malware scanning are not implemented yet.
+The storage provider is behind a `ResourceStorage` interface; local filesystem storage is implemented for development, while an R2 adapter is future work. Files are streamed for inline viewing or attachment downloads. Guests see only approved resources. Signed-in users can access approved resources and their own submissions; moderators and administrators can access records in their university scope. Students, Contributors, and Super Administrators can upload, owners can maintain their own submissions, and moderators can approve/reject only pending resources in their university. Self-moderation is denied; moderation actions are audited. Cookie-authenticated mutations require CSRF tokens. The web app includes registration, email verification, login, session restoration, sign-out, a protected account page, and a multipart resource submission form. Account recovery and malware scanning are not implemented yet.
 
 Route parameters and course query filters are validated with Zod. Course filters can be combined: `university`, `faculty`, `department`, `level` (three digits, such as `100`), `session` (`YYYY/YYYY`) and `semester` (semester code). Pagination uses `page` (default `1`) and `pageSize` (default `20`, maximum `100`). For example: `/api/v1/courses?university=university-of-lagos&department=computer-engineering&level=100`.
 

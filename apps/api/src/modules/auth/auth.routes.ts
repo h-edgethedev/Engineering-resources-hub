@@ -2,8 +2,8 @@ import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { validateRequest } from '../../middleware/validateRequest.js';
 import { requireAnyRole, requireAuth, requireCsrf, requireTrustedOrigin } from './auth.middleware.js';
-import { csrfController, loginController, logoutController, meController, registerController } from './auth.controller.js';
-import { grantIdParamsSchema, grantRoleSchema, userIdParamsSchema } from './auth.schemas.js';
+import { csrfController, loginController, logoutController, meController, registerController, resendVerificationController, verifyEmailController } from './auth.controller.js';
+import { grantIdParamsSchema, grantRoleSchema, resendVerificationSchema, userIdParamsSchema, verifyEmailSchema } from './auth.schemas.js';
 import { grantRole, revokeRole } from './role.service.js';
 import { ApiError } from '../../errors/ApiError.js';
 
@@ -17,8 +17,18 @@ const credentialLimiter = rateLimit({
   handler: (_request, response) => response.status(429).json({ error: { code: 'AUTH_RATE_LIMITED', message: 'Too many authentication attempts. Try again later.' } }),
 });
 
+const verificationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  handler: (_request, response) => response.status(429).json({ error: { code: 'AUTH_RATE_LIMITED', message: 'Too many verification requests. Try again later.' } }),
+});
+
 authRouter.post('/register', requireTrustedOrigin, credentialLimiter, registerController);
 authRouter.post('/login', requireTrustedOrigin, credentialLimiter, loginController);
+authRouter.post('/verify-email', requireTrustedOrigin, verificationLimiter, validateRequest({ body: verifyEmailSchema }), verifyEmailController);
+authRouter.post('/resend-verification', requireTrustedOrigin, verificationLimiter, validateRequest({ body: resendVerificationSchema }), resendVerificationController);
 authRouter.get('/me', requireAuth, meController);
 authRouter.get('/csrf', requireAuth, csrfController);
 authRouter.post('/logout', requireAuth, requireCsrf, logoutController);

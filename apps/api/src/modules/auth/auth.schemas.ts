@@ -13,6 +13,9 @@ export const loginSchema = z.object({
   password: z.string().min(1).max(72).refine((value) => Buffer.byteLength(value, 'utf8') <= 72, 'must not exceed 72 UTF-8 bytes'),
 }).strict();
 
+export const verifyEmailSchema = z.object({ token: z.string().min(32).max(256) }).strict();
+export const resendVerificationSchema = z.object({ email: z.string().trim().toLowerCase().max(254).pipe(z.email()) }).strict();
+
 export const grantRoleSchema = z.object({
   role: z.enum(['SUPER_ADMIN', 'UNIVERSITY_ADMIN', 'MODERATOR', 'CONTRIBUTOR', 'STUDENT']),
   universityId: z.uuid().nullable().optional(),

@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, Route, Routes, useParams } from 'react-router-dom';
+import { LoginPage, ProtectedAccount, RegisterPage, VerifyEmailPage } from './AuthPages';
+import { useAuth } from './auth';
 
 interface Department {
   id: string;
@@ -89,6 +91,7 @@ function SectionHeading({ eyebrow, title, description }: { eyebrow: string; titl
 
 function SiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { user } = useAuth();
   const closeMenu = () => setMenuOpen(false);
 
   return (
@@ -106,8 +109,8 @@ function SiteHeader() {
           <a href="#resources" onClick={closeMenu}>Resources</a>
           <a href="#universities" onClick={closeMenu}>Universities</a>
           <a href="#about" onClick={closeMenu}>About</a>
-          <span className="nav-coming-soon" aria-disabled="true">Sign in <small>soon</small></span>
-          <a className="button button-small button-purple" href="#contribute" onClick={closeMenu}>Get started <ArrowIcon /></a>
+          {user ? <Link to="/account" onClick={closeMenu}>My account</Link> : <Link to="/login" onClick={closeMenu}>Sign in</Link>}
+          <Link className="button button-small button-purple" to={user ? '/account' : '/register'} onClick={closeMenu}>{user ? 'Contribute' : 'Get started'} <ArrowIcon /></Link>
         </nav>
       </div>
     </header>
@@ -185,6 +188,7 @@ function EmptyCatalogCard({ title, message, action, href }: { title: string; mes
 }
 
 function LandingPage() {
+  const { user } = useAuth();
   const universityQuery = useQuery({ queryKey: ['university', 'university-of-lagos'], queryFn: fetchUniversity });
   const departments = universityQuery.data?.faculties.flatMap((faculty) => faculty.departments.map((department) => ({ ...department, facultySlug: faculty.slug, universitySlug: universityQuery.data?.slug }))) ?? [];
   const facultyCount = universityQuery.data?.faculties.length ?? 0;
@@ -224,7 +228,7 @@ function LandingPage() {
         <section className="section section-universities" id="universities" aria-labelledby="universities-title">
           <div className="section-inner">
             <SectionHeading eyebrow="BUILT TO GROW" title="Starting at the University of Lagos" description="EngHub is designed to support engineering students across universities, one verified academic catalogue at a time." />
-            {universityQuery.data && <article className="university-card"><div className="university-crest">UN<span>i</span></div><div className="university-details"><p className="card-kicker">CURRENTLY AVAILABLE</p><h3>{universityQuery.data.name}</h3><p>{universityQuery.data.countryCode === 'NG' ? 'Nigeria' : universityQuery.data.countryCode}</p><div className="university-tags"><span>{facultyCount} {facultyCount === 1 ? 'faculty' : 'faculties'}</span><span>{departments.length} departments</span></div></div><a className="button button-outline" href="#disciplines">Explore university <ArrowIcon /></a></article>}
+            {universityQuery.data && <article className="university-card"><img className="university-crest" src="/unilag_logo.png" alt="University of Lagos logo" width="72" height="72" /><div className="university-details"><p className="card-kicker">CURRENTLY AVAILABLE</p><h3>{universityQuery.data.name}</h3><p>{universityQuery.data.countryCode === 'NG' ? 'Nigeria' : universityQuery.data.countryCode}</p><div className="university-tags"><span>{facultyCount} {facultyCount === 1 ? 'faculty' : 'faculties'}</span><span>{departments.length} departments</span></div></div><a className="button button-outline" href="#disciplines">Explore university <ArrowIcon /></a></article>}
             {universityQuery.isError && <div className="catalog-message">University information is temporarily unavailable.</div>}
           </div>
         </section>
@@ -243,7 +247,7 @@ function LandingPage() {
         <section className="contribute-section" id="contribute" aria-labelledby="contribute-title">
           <div className="contribute-pattern" aria-hidden="true">✳</div>
           <div className="contribute-copy"><p className="eyebrow">BUILT BY THE COMMUNITY</p><h2 id="contribute-title">Your notes could help someone crack the next problem.</h2><p>Community contributions will help make great learning materials easier to find. Every submission will be reviewed before it becomes public.</p></div>
-          <span className="button button-light button-disabled" aria-disabled="true">Contributions opening soon</span>
+          <Link className="button button-light" to={user ? '/account' : '/register'}>{user ? 'Go to your account' : 'Create an account'} <ArrowIcon /></Link>
         </section>
       </main>
 
@@ -298,6 +302,10 @@ function DepartmentPage() {
 function App() {
   return (
     <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
+      <Route path="/verify-email" element={<VerifyEmailPage />} />
+      <Route path="/account" element={<ProtectedAccount />} />
       <Route path="/universities/:universitySlug/faculties/:facultySlug/departments/:departmentSlug" element={<DepartmentPage />} />
       <Route path="*" element={<LandingPage />} />
     </Routes>

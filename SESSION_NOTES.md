@@ -39,9 +39,9 @@ Updated: 2026-11-21
 - Exercised the API against a seeded Computer Engineering course and its actual 100 Level, Second Semester ID: multipart upload returned `201`; the local file was created; inline view and attachment download returned the uploaded bytes; deletion returned `204`, removed the file, and the resource subsequently returned `404`.
 - The temporary test resource and uploaded file were cleaned up. Seeded catalogue data remains in the configured database as expected. API server was stopped after verification.
 
-## Next logical development task
+## Next logical development task (updated 2026-11-22)
 
-Build the web registration/login and session-aware resource flows, then add email verification and account recovery. Before public deployment, choose a malware scanning/quarantine service and deployment-grade session/rate-limit stores; add Cloudflare R2 when cloud storage is needed. Preserve owner-reviewed course data; do not silently rewrite the course import.
+The API auth and moderation flows and local upload workflow have already been implemented and verified. The web app has registration/login, session restoration, sign-out, a protected account page, and an authenticated resource submission form. The next product slice is a university-wide moderation queue in the web app. After that, add email verification and account recovery. Before public deployment, choose a malware scanning/quarantine service and deployment-grade session/rate-limit stores; add Cloudflare R2 when cloud storage is needed. Preserve owner-reviewed course data; do not silently rewrite the course import.
 
 ## Authentication and authorization milestone (2026-11-21)
 
@@ -59,3 +59,27 @@ Build the web registration/login and session-aware resource flows, then add emai
 - Branch is `main` at `c04d04e`; the auth/authorization implementation and policy documentation are in progress and have not been committed.
 - A pre-existing user edit in `prompt.txt` was present before the auth work and must remain untouched.
 - The local database now has the auth migration applied and the reviewed 36-course seed. No test accounts or upload smoke-test resources remain.
+
+## Web authentication milestone (2026-11-22)
+
+- Added `/register` and `/login` pages wired to the existing API. Registration enforces the API's 12-character password minimum and displays API validation/authentication messages.
+- Added session restoration through `GET /api/v1/auth/me`, cookie-backed login/registration, CSRF-safe sign-out using `GET /auth/csrf` followed by `POST /auth/logout`, and a protected `/account` page showing the current user's role grants.
+- Updated landing navigation and contribution calls to action based on sign-in state; updated project and API documentation to reflect the web auth milestone.
+- The Super Administrator bootstrap should be considered complete only if the command printed its success message; the application database was not inspected during this UI work.
+
+## Web resource submission milestone (2026-11-22)
+
+- Added a resource submission form to `/account` for users with a Student, Contributor, or Super Administrator grant. It loads the UNILAG course catalogue from the API and lets students choose a course, material type, title, optional description, and one supported file.
+- The form checks allowed file extensions and the 20 MiB default size in the browser, requests a fresh CSRF token, and submits multipart form data. API validation remains authoritative, and successful submissions are shown as pending moderation.
+- The local account page checks the user's roles before showing the form; the API also authorizes Super Administrators to submit.
+- Next: implement the university-wide moderation queue in the web app. Account recovery remains future work.
+
+## Email verification and Super Administrator uploads (2026-11-22)
+
+- Allowed Super Administrators to submit resources in the API and account UI, alongside Students and Contributors.
+- New registrations now create a Student account without a session and send a 30-minute, single-use verification link. Tokens are random, stored as hashes, and deleted when replaced or after a delivery failure. Added verify and resend endpoints with request limits and enumeration-safe resend responses.
+- Login and session restoration require a verified email. The migration backfills current users as verified, and new bootstrapped Super Administrators are marked verified.
+- Added a verification page with resend support. In development without SMTP configuration, the API prints the link to its console. Production requires `EMAIL_SMTP_URL` and `EMAIL_FROM` and uses Nodemailer.
+- Added migration `20261122040000_add_email_verification`; Prisma Client generation, API typecheck, full monorepo typecheck, and full build succeeded. The first sandboxed migration attempt failed, then it applied successfully with local PostgreSQL access; the database reports schema in sync.
+- In development without SMTP settings, use the link printed in the API console. Production requires `EMAIL_SMTP_URL` and `EMAIL_FROM`; credentials belong only in the local `.env`.
+- Next: continue with the university-wide moderation queue UI. Account recovery remains future work.
