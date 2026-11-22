@@ -5,11 +5,15 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 
 const db = vi.hoisted(() => ({
   resource: { count: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
   course: { findFirst: vi.fn() },
   courseOffering: { findFirst: vi.fn() },
+  authSession: { findUnique: vi.fn(), update: vi.fn() },
+  moderationAction: { create: vi.fn() },
+  $transaction: vi.fn(),
 }));
 
 const storage = vi.hoisted(() => ({
@@ -28,6 +32,11 @@ const resourceId = 'd9428888-122b-11e1-b85c-61cd3cbb3210';
 const courseId = 'd9428888-122b-11e1-b85c-61cd3cbb3211';
 const sessionId = 'd9428888-122b-11e1-b85c-61cd3cbb3212';
 const semesterId = 'd9428888-122b-11e1-b85c-61cd3cbb3213';
+const userId = 'd9428888-122b-11e1-b85c-61cd3cbb3214';
+const universityId = 'd9428888-122b-11e1-b85c-61cd3cbb3215';
+const sessionToken = 'test-session-token';
+const csrfToken = 'test-csrf-token';
+const csrfTokenHash = createHash('sha256').update(csrfToken).digest('hex');
 const resource = {
   id: resourceId,
   courseId,
@@ -37,10 +46,18 @@ const resource = {
   description: 'Introduction notes',
   type: 'LECTURE_NOTE',
   status: 'PENDING',
+  uploadedById: userId,
   course: { id: courseId, code: 'CPE 101', title: 'Introduction to Computing' },
   academicSession: { id: sessionId, label: '2025/2026' },
   semester: { id: semesterId, code: 'first', label: 'First Semester', programmeLevel: { code: '100', label: '100 Level' } },
   file: { id: 'file1', provider: 'local', storageKey: 'resources/cpe101/notes.pdf', originalFilename: 'notes.pdf', mediaType: 'application/pdf', byteSize: 4096 },
+};
+const resourceScope = {
+  id: resourceId,
+  status: 'PENDING',
+  uploadedById: userId,
+  course: { programme: { department: { faculty: { universityId } } } },
+  file: { provider: 'local', storageKey: 'resources/cpe101/notes.pdf', originalFilename: 'notes.pdf', mediaType: 'application/pdf' },
 };
 const payload = {
   courseId,
@@ -59,11 +76,16 @@ async function uploadForm(overrides: Record<string, string> = {}, fileName = 'no
   return form;
 }
 
-async function request(path: string, init?: RequestInit) {
+async function request(path: string, init?: RequestInit, authenticated = true, includeCsrfHeader = true) {
   const server = createApp({ databaseHealthCheck: async () => undefined }).listen(0);
   servers.push(server);
   await new Promise<void>((resolve, reject) => { server.once('listening', resolve); server.once('error', reject); });
-  return fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}${path}`, init);
+  const headers = new Headers(init?.headers);
+  if (authenticated) {
+    headers.set('Cookie', `enghub_session=${sessionToken}; enghub_csrf=${csrfToken}`);
+    if (includeCsrfHeader) headers.set('X-CSRF-Token', csrfToken);
+  }
+  return fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}${path}`, { ...init, headers });
 }
 
 const json = (value: unknown): RequestInit => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value) });
@@ -86,13 +108,25 @@ beforeEach(() => {
   vi.clearAllMocks();
   db.resource.count.mockResolvedValue(1);
   db.resource.findMany.mockResolvedValue([resource]);
-  db.resource.findUnique.mockResolvedValue(resource);
+  db.resource.findUnique.mockImplementation((query) => {
+    if (query.select?.uploadedById) return Promise.resolve(resourceScope);
+    if (query.select?.courseId) return Promise.resolve({ courseId, academicSessionId: sessionId, semesterId, status: 'PENDING', uploadedById: userId });
+    return Promise.resolve(resource);
+  });
   db.resource.create.mockResolvedValue(resource);
   db.resource.update.mockResolvedValue({ ...resource, title: 'Updated title' });
-  db.resource.delete.mockResolvedValue(resource);
+  db.moderationAction.create.mockResolvedValue({ id: 'action-1' });
+  db.$transaction.mockImplementation((callback) => callback(db));
   storage.put.mockResolvedValue({ storageKey: 'generated/resource.pdf' });
   db.course.findFirst.mockResolvedValue({ id: courseId });
   db.courseOffering.findFirst.mockResolvedValue({ courseId });
+  db.authSession.findUnique.mockResolvedValue({
+    id: 'test-session-id',
+    csrfTokenHash,
+    expiresAt: new Date(Date.now() + 60_000),
+    revokedAt: null,
+    user: { id: userId, email: 'student@example.test', displayName: 'Test Student', status: 'ACTIVE', roleAssignments: [{ id: 'student-role', role: 'STUDENT', universityId: null, scopeKey: 'global' }] },
+  });
 });
 
 describe('resource management endpoints', () => {
@@ -110,13 +144,24 @@ describe('resource management endpoints', () => {
     const response = await request(`/api/v1/resources?courseId=${courseId}&type=LECTURE_NOTE&page=2&pageSize=5`);
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ data: [{ id: resourceId }], meta: { page: 2, pageSize: 5, total: 1 } });
-    expect(db.resource.findMany.mock.calls[0][0]).toMatchObject({ where: { courseId, type: 'LECTURE_NOTE' }, skip: 5, take: 5 });
+    expect(db.resource.findMany.mock.calls[0][0]).toMatchObject({
+      where: { courseId, type: 'LECTURE_NOTE', AND: [{ OR: [{ status: 'APPROVED' }, { uploadedById: userId }] }] },
+      skip: 5,
+      take: 5,
+    });
   });
 
   it('fetches a resource by UUID', async () => {
     const response = await request(`/api/v1/resources/${resourceId}`);
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ data: { id: resourceId, file: { mediaType: 'application/pdf' } } });
+  });
+
+  it('hides pending resources from guests, including the file endpoint', async () => {
+    const detail = await request(`/api/v1/resources/${resourceId}`, undefined, false);
+    expect(detail.status).toBe(404);
+    const file = await request(`/api/v1/resources/${resourceId}/file`, undefined, false);
+    expect(file.status).toBe(404);
   });
 
   it('serves the stored file inline and as an attachment', async () => {
@@ -151,7 +196,8 @@ describe('resource management endpoints', () => {
     const response = await request(`/api/v1/resources/${resourceId}`, { method: 'DELETE' });
     expect(response.status).toBe(204);
     expect(await response.text()).toBe('');
-    expect(db.resource.delete).toHaveBeenCalledWith({ where: { id: resourceId } });
+    expect(db.resource.update.mock.calls[0][0].data.status).toBe('REMOVED');
+    expect(db.moderationAction.create).toHaveBeenCalledWith({ data: { resourceId, actorId: userId, action: 'REMOVED' } });
   });
 
   it('returns 400 for malformed IDs and invalid resource data', async () => {
@@ -193,5 +239,53 @@ describe('resource management endpoints', () => {
     const response = await request(`/api/v1/resources?courseId=${courseId}&status=APPROVED`);
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ data: [], meta: { total: 0, totalPages: 0 } });
+  });
+
+  it('restricts guests to approved resources even when they request another status', async () => {
+    db.resource.count.mockResolvedValueOnce(0);
+    db.resource.findMany.mockResolvedValueOnce([]);
+    const response = await request(`/api/v1/resources?status=PENDING`, undefined, false);
+    expect(response.status).toBe(200);
+    expect(db.resource.findMany.mock.calls[0][0].where.AND).toEqual([
+      { OR: [{ status: 'APPROVED' }] },
+      { status: 'PENDING' },
+    ]);
+  });
+
+  it('requires a valid CSRF token for signed-in mutations', async () => {
+    const response = await request(`/api/v1/resources/${resourceId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'Update' }) }, true, false);
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ error: { code: 'CSRF_VALIDATION_FAILED' } });
+  });
+
+  it('prevents moderators from approving their own submissions', async () => {
+    db.authSession.findUnique.mockResolvedValueOnce({
+      id: 'test-session-id', csrfTokenHash, expiresAt: new Date(Date.now() + 60_000), revokedAt: null,
+      user: { id: userId, email: 'student@example.test', displayName: 'Test Student', status: 'ACTIVE', roleAssignments: [{ id: 'moderator-role', role: 'MODERATOR', universityId, scopeKey: `university:${universityId}` }] },
+    });
+    const response = await request(`/api/v1/resources/${resourceId}/moderation`, json({ action: 'APPROVED' }));
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ error: { code: 'SELF_MODERATION_FORBIDDEN' } });
+  });
+
+  it('enforces the university boundary for moderator decisions', async () => {
+    db.authSession.findUnique.mockResolvedValueOnce({
+      id: 'test-session-id', csrfTokenHash, expiresAt: new Date(Date.now() + 60_000), revokedAt: null,
+      user: { id: '941e3fa0-122b-11e1-b85c-61cd3cbb3216', email: 'moderator@example.test', displayName: 'Moderator', status: 'ACTIVE', roleAssignments: [{ id: 'moderator-role', role: 'MODERATOR', universityId: '941e3fa0-122b-11e1-b85c-61cd3cbb3217', scopeKey: 'university:other' }] },
+    });
+    const response = await request(`/api/v1/resources/${resourceId}/moderation`, json({ action: 'APPROVED' }));
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ error: { code: 'FORBIDDEN' } });
+  });
+
+  it('allows an in-scope moderator to approve a different user submission', async () => {
+    db.authSession.findUnique.mockResolvedValueOnce({
+      id: 'test-session-id', csrfTokenHash, expiresAt: new Date(Date.now() + 60_000), revokedAt: null,
+      user: { id: '941e3fa0-122b-11e1-b85c-61cd3cbb3218', email: 'moderator@example.test', displayName: 'Moderator', status: 'ACTIVE', roleAssignments: [{ id: 'moderator-role', role: 'MODERATOR', universityId, scopeKey: `university:${universityId}` }] },
+    });
+    const response = await request(`/api/v1/resources/${resourceId}/moderation`, json({ action: 'APPROVED' }));
+    expect(response.status).toBe(200);
+    expect(db.resource.update.mock.calls[0][0].data.status).toBe('APPROVED');
+    expect(db.moderationAction.create).toHaveBeenCalledWith({ data: { resourceId, actorId: '941e3fa0-122b-11e1-b85c-61cd3cbb3218', action: 'APPROVED', reason: undefined } });
   });
 });

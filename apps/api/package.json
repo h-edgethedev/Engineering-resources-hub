@@ -12,15 +12,18 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
+    "auth:bootstrap-admin": "tsx prisma/bootstrap-admin.ts",
     "db:studio": "prisma studio"
   },
   "dependencies": {
     "@erh/shared": "*",
     "@prisma/adapter-pg": "^7.0.0",
     "@prisma/client": "^7.0.0",
+    "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^16.6.0",
     "express": "^5.1.0",
+    "express-rate-limit": "^8.7.5",
     "multer": "^2.5.0",
     "pg": "^8.16.0",
     "zod": "^4.6.7"

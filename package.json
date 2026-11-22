@@ -20,6 +20,7 @@
     "db:generate": "npm run db:generate --workspace @erh/api",
     "db:migrate": "npm run db:migrate --workspace @erh/api",
     "db:seed": "npm run db:seed --workspace @erh/api",
+    "auth:bootstrap-admin": "npm run auth:bootstrap-admin --workspace @erh/api",
     "db:studio": "npm run db:studio --workspace @erh/api"
   },
   "allowScripts": {

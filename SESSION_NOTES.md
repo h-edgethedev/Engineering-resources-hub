@@ -1,6 +1,6 @@
 # Session notes
 
-Updated: 2026-11-20
+Updated: 2026-11-21
 
 ## Resource API milestone
 
@@ -15,15 +15,13 @@ Updated: 2026-11-20
 - The proposed EngHub RBAC hierarchy has six roles: Super Administrator, University Administrator, Moderator, Contributor, Student, and Guest.
 - Scope/intent: platform-wide administration; university-scoped academic administration; scoped resource moderation; resource contribution; registered student access/community participation; and public guest browsing of approved materials.
 - Important constraints: university administrators are limited to their university; moderator authority is scoped; contributors cannot approve their own uploads; student access to approved resources does not require contributor status; guests cannot use account-dependent actions such as upload, bookmark, or comment.
-- This is a planning note, not an implemented feature. No authentication or authorization code has been added.
+- These initial role constraints informed the policy in `docs/AUTHORIZATION_POLICY.md` and the implementation recorded below.
 
-## Current development state
+## Prior academic API milestone
 
-- The active focus shifted from authentication to completing the academic API.
 - Academic endpoints were added for listing faculties, departments, and programmes; fetching a programme; listing courses with academic filters and pagination; and fetching a course by UUID. Existing university and department endpoints remain.
 - Zod validation, not-found behavior, empty-list behavior, response envelopes, pagination metadata, and endpoint documentation were updated.
 - API typecheck, API build, and the API test suite passed after these changes. Academic HTTP tests mock Prisma; this does not establish a live PostgreSQL integration check.
-- The last inspected Git status showed uncommitted changes in the academic API controller, routes, schemas, and service, `docs/API_DOCUMENTATION.md`, and the new `apps/api/test/academics.test.ts`. Preserve and review these changes before editing.
 - The repository contains a Prisma schema and initial migration. Local API environment files exist but their contents are intentionally not recorded here.
 
 ## File upload and storage milestone (2026-11-21)
@@ -43,4 +41,21 @@ Updated: 2026-11-20
 
 ## Next logical development task
 
-Define and implement authentication, ownership checks, and scoped RBAC before public deployment. Add a malware scanning policy and, when cloud storage is needed, implement the Cloudflare R2 adapter. Preserve owner-reviewed course data; do not silently rewrite the course import.
+Build the web registration/login and session-aware resource flows, then add email verification and account recovery. Before public deployment, choose a malware scanning/quarantine service and deployment-grade session/rate-limit stores; add Cloudflare R2 when cloud storage is needed. Preserve owner-reviewed course data; do not silently rewrite the course import.
+
+## Authentication and authorization milestone (2026-11-21)
+
+- Owner decisions: every authenticated Student can submit resources; moderators cover their whole assigned university.
+- Added User, RoleAssignment, AuthSession, and ModerationAction models; resources now store uploader ownership. Migration `20261121125018_add_auth_and_moderation` was applied to the configured local PostgreSQL database.
+- Added registration, login, logout, current-user, CSRF refresh, and scoped role grant/revoke endpoints. Passwords use bcrypt hashes; sessions are opaque random cookie tokens stored as hashes, with CSRF protection for authenticated mutations and an in-memory credential rate limit.
+- Added one-time Super Administrator bootstrap command. Student registration grants Student; Super Administrators can grant platform/university roles; University Administrators can grant Moderator or Contributor only in their own university.
+- Resource uploads require Student or Contributor; guests see only approved resources; uploaders can access their own submissions; moderators see and review their university's resources; self-moderation is denied; review actions are recorded; edits to approved/rejected resources return them to pending; removal hides content and deletes its stored binary.
+- API typecheck passed and API tests passed: 38 tests across 4 files. Migration applied successfully. Live auth smoke check passed: registration, `/me`, CSRF refresh, logout, and confirmed revoked-session denial. The temporary Student account was deleted afterward. Live upload lifecycle was also verified in the prior milestone.
+- The configured database currently has no Super Administrator role grant. Run the one-time bootstrap command with process-only credentials before granting moderator/admin roles.
+- Pre-existing user edit in `prompt.txt` was left untouched.
+
+## Current development checkpoint (2026-11-21)
+
+- Branch is `main` at `c04d04e`; the auth/authorization implementation and policy documentation are in progress and have not been committed.
+- A pre-existing user edit in `prompt.txt` was present before the auth work and must remain untouched.
+- The local database now has the auth migration applied and the reviewed 36-course seed. No test accounts or upload smoke-test resources remain.
