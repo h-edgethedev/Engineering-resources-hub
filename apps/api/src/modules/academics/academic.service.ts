@@ -57,7 +57,7 @@ export async function findProgrammeInDepartment(universitySlug: string, facultyS
   });
 }
 
-type CourseFilters = { university?: string; faculty?: string; department?: string; level?: string; session?: string; semester?: string; page: number; pageSize: number };
+type CourseFilters = { university?: string; faculty?: string; department?: string; q?: string; level?: string; session?: string; semester?: string; page: number; pageSize: number };
 
 function courseWhere(filters: CourseFilters) {
   const offeringFilters = [
@@ -68,9 +68,17 @@ function courseWhere(filters: CourseFilters) {
   return {
     status: 'ACTIVE' as const,
     programme: { status: 'ACTIVE' as const, department: {
-      ...(filters.department ? { slug: filters.department } : {}),
       faculty: { ...(filters.faculty ? { slug: filters.faculty } : {}), university: filters.university ? { slug: filters.university, status: 'ACTIVE' as const } : { status: 'ACTIVE' as const } },
     } },
+    ...(filters.department ? { OR: [
+      { programme: { department: { slug: filters.department } } },
+      { code: { contains: 'GET', mode: 'insensitive' as const } },
+    ] } : {}),
+    ...(filters.q ? { AND: [{ OR: [
+      { code: { contains: filters.q, mode: 'insensitive' as const } },
+      { title: { contains: filters.q, mode: 'insensitive' as const } },
+      { description: { contains: filters.q, mode: 'insensitive' as const } },
+    ] }] } : {}),
     ...(offeringFilters.length ? { offerings: { some: { AND: offeringFilters } } } : {}),
   };
 }
@@ -86,11 +94,12 @@ export async function listCourses(filters: CourseFilters) {
     prisma.course.count({ where }),
     prisma.course.findMany({ where, orderBy: [{ code: 'asc' }, { title: 'asc' }], skip: (filters.page - 1) * filters.pageSize, take: filters.pageSize, select: { id: true, code: true, title: true, description: true, creditUnits: true, ...courseRelations } }),
   ]);
-  return { items, meta: { page: filters.page, pageSize: filters.pageSize, total, totalPages: Math.ceil(total / filters.pageSize) } };
+  return { items: items.map((course) => ({ ...course, isGeneralEngineering: course.code.toUpperCase().includes('GET') })), meta: { page: filters.page, pageSize: filters.pageSize, total, totalPages: Math.ceil(total / filters.pageSize) } };
 }
 
 export async function findCourseById(courseId: string) {
-  return prisma.course.findFirst({ where: { id: courseId, status: 'ACTIVE' }, select: { id: true, code: true, title: true, description: true, creditUnits: true, ...courseRelations } });
+  const course = await prisma.course.findFirst({ where: { id: courseId, status: 'ACTIVE' }, select: { id: true, code: true, title: true, description: true, creditUnits: true, ...courseRelations } });
+  return course ? { ...course, isGeneralEngineering: course.code.toUpperCase().includes('GET') } : null;
 }
 
 export async function findUniversityBySlug(slug: string) {
@@ -122,7 +131,7 @@ export async function findDepartmentInUniversity(
   facultySlug: string,
   departmentSlug: string,
 ) {
-  return prisma.department.findFirst({
+  const department = await prisma.department.findFirst({
     where: {
       slug: departmentSlug,
       faculty: {
@@ -182,4 +191,17 @@ export async function findDepartmentInUniversity(
       },
     },
   });
+  if (!department) return null;
+
+  const generalCourses = await prisma.course.findMany({
+    where: {
+      status: 'ACTIVE',
+      code: { contains: 'GET', mode: 'insensitive' },
+      programme: { status: 'ACTIVE', department: { faculty: { university: { slug: universitySlug, status: 'ACTIVE' } } } },
+      id: { notIn: department.programmes.flatMap((programme) => programme.courses.map((course) => course.id)) },
+    },
+    orderBy: [{ code: 'asc' }, { title: 'asc' }],
+    select: { id: true, code: true, title: true, description: true, creditUnits: true, ...courseRelations },
+  });
+  return { ...department, generalCourses: generalCourses.map((course) => ({ ...course, isGeneralEngineering: true })) };
 }

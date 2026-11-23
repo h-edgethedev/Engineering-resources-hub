@@ -49,6 +49,33 @@ enum ModerationActionType {
   REMOVED
 }
 
+enum PreferredResourceKind {
+  TEXTBOOK
+  LECTURE_NOTE
+  PAST_QUESTION
+  SLIDES
+  WORKED_SOLUTION
+  LAB_MANUAL
+  PROGRAMMING_EXERCISE
+  PROJECT
+}
+
+enum LearningInterest {
+  PROGRAMMING
+  AI
+  ELECTRONICS
+  TELECOMMUNICATIONS
+  ROBOTICS
+  MATHEMATICS
+}
+
+enum LearningGoal {
+  EXAM_PREPARATION
+  CONCEPT_MASTERY
+  PROJECT_BUILDING
+  RESEARCH
+}
+
 model University {
   id          String            @id @default(uuid()) @db.Uuid
   name        String
@@ -58,6 +85,7 @@ model University {
   faculties   Faculty[]
   sessions    AcademicSession[]
   roleAssignments RoleAssignment[]
+  academicProfiles AcademicProfile[] @relation("AcademicProfileUniversity")
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 }
@@ -73,6 +101,9 @@ model User {
   grantsMade         RoleAssignment[]      @relation("RoleGrantor")
   sessions           AuthSession[]
   emailVerificationTokens EmailVerificationToken[]
+  academicProfile    AcademicProfile?
+  profile            UserProfile?
+  preferences        UserPreferences?
   resources          Resource[]            @relation("ResourceUploader")
   moderationActions  ModerationAction[]
   createdAt          DateTime              @default(now())
@@ -133,6 +164,7 @@ model Faculty {
   name         String
   slug         String
   departments  Department[]
+  academicProfiles AcademicProfile[] @relation("AcademicProfileFaculty")
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
@@ -147,6 +179,7 @@ model Department {
   name       String
   slug       String
   programmes Programme[]
+  academicProfiles AcademicProfile[] @relation("AcademicProfileDepartment")
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
 
@@ -166,6 +199,7 @@ model Programme {
   levels        ProgrammeLevel[]
   sessions      ProgrammeSession[]
   courses       Course[]
+  academicProfiles AcademicProfile[] @relation("AcademicProfileProgramme")
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
 
@@ -209,6 +243,7 @@ model ProgrammeLevel {
   label       String?
   ordinal     Int
   semesters   Semester[]
+  academicProfiles AcademicProfile[] @relation("AcademicProfileLevel")
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
@@ -224,12 +259,61 @@ model Semester {
   label            String
   ordinal          Int
   offerings        CourseOffering[]
+  academicProfiles AcademicProfile[] @relation("AcademicProfileSemester")
   resources        Resource[]
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
 
   @@unique([programmeLevelId, code])
   @@unique([programmeLevelId, ordinal])
+}
+
+model AcademicProfile {
+  id                String          @id @default(uuid()) @db.Uuid
+  userId            String          @unique @db.Uuid
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  universityId      String?         @db.Uuid
+  university        University?     @relation("AcademicProfileUniversity", fields: [universityId], references: [id], onDelete: SetNull)
+  facultyId         String?         @db.Uuid
+  faculty           Faculty?        @relation("AcademicProfileFaculty", fields: [facultyId], references: [id], onDelete: SetNull)
+  departmentId      String?         @db.Uuid
+  department        Department?     @relation("AcademicProfileDepartment", fields: [departmentId], references: [id], onDelete: SetNull)
+  programmeId       String?         @db.Uuid
+  programme         Programme?      @relation("AcademicProfileProgramme", fields: [programmeId], references: [id], onDelete: SetNull)
+  currentLevelId    String?         @db.Uuid
+  currentLevel      ProgrammeLevel? @relation("AcademicProfileLevel", fields: [currentLevelId], references: [id], onDelete: SetNull)
+  currentSemesterId String?         @db.Uuid
+  currentSemester   Semester?       @relation("AcademicProfileSemester", fields: [currentSemesterId], references: [id], onDelete: SetNull)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([universityId])
+  @@index([departmentId])
+  @@index([programmeId])
+}
+
+model UserProfile {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @unique @db.Uuid
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  username   String?  @unique
+  avatarUrl  String?
+  bio        String?
+  githubUrl  String?
+  linkedInUrl String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model UserPreferences {
+  id                 String                 @id @default(uuid()) @db.Uuid
+  userId             String                 @unique @db.Uuid
+  user               User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resourceKinds      PreferredResourceKind[] @default([])
+  learningInterests  LearningInterest[]      @default([])
+  learningGoals      LearningGoal[]           @default([])
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
 }
 
 model Course {

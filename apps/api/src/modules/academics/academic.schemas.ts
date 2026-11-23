@@ -22,6 +22,7 @@ export const courseFiltersSchema = z.object({
   university: slug.optional(),
   faculty: slug.optional(),
   department: slug.optional(),
+  q: z.string().trim().min(1).max(200).optional(),
   level: z.string().regex(/^\d{3}$/, 'must be a three-digit academic level').optional(),
   session: z.string().regex(/^\d{4}\/\d{4}$/, 'must use the YYYY/YYYY format').optional(),
   semester: slug.optional(),

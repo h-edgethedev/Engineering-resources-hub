@@ -83,3 +83,38 @@ The API auth and moderation flows and local upload workflow have already been im
 - Added migration `20261122040000_add_email_verification`; Prisma Client generation, API typecheck, full monorepo typecheck, and full build succeeded. The first sandboxed migration attempt failed, then it applied successfully with local PostgreSQL access; the database reports schema in sync.
 - In development without SMTP settings, use the link printed in the API console. Production requires `EMAIL_SMTP_URL` and `EMAIL_FROM`; credentials belong only in the local `.env`.
 - Next: continue with the university-wide moderation queue UI. Account recovery remains future work.
+
+## Registration and verification experience polish (2026-11-23)
+
+- Reused the existing account registration, bcrypt hashing, one-time email verification tokens, SMTP setup, session controls, and server-side authentication rate limits; no schema or API endpoint changes were needed.
+- Signup now confirms the password in the browser, offers an accessible show/hide control, and displays live password requirements. It sends only the password field to the API.
+- The verification page only says an email was sent after successful registration. Paths reached after an email-send failure or from an unverified login use neutral copy and can request a resend. Resend adds a 60-second UI cooldown; the existing API rate limiter remains authoritative.
+- Updated auth API tests for the current verify-before-login flow and added coverage for normalized registration, duplicate addresses, verification token validity/expiry/reuse, and resend behavior. Updated resource test session fixtures to include verified-email state required by the current auth middleware.
+- `npm run test:api` passed: 43 tests across 4 files. `npm run typecheck` and `npm run build` passed. No live SMTP delivery check was performed.
+- At the end of this milestone, academic onboarding, academic profile persistence, preferences, and profile setup remained outstanding; see the subsequent milestone entries below.
+
+## Academic onboarding milestone (2026-11-23)
+
+- Added optional `AcademicProfile` storage and migration `20261123110000_add_academic_profiles`, with nullable foreign keys for university, faculty, department, programme, current level, and current semester.
+- Added authenticated `GET` and CSRF-protected `PUT /api/v1/auth/me/academic-profile` endpoints. Zod checks hierarchy shape; the service verifies selected records belong to the selected parent records before saving.
+- Added `/onboarding`, an optional two-step flow that derives countries from active university records, loads university/faculty/department/programme/level/semester options from existing academic APIs, and saves each selection as progress. Users can skip, return, or edit from the account page. Public browsing is not gated.
+- Documented the endpoints and updated project context. API tests pass: 47 tests across 4 files. Prisma schema validation, client generation, monorepo typecheck, and full build succeeded.
+- The migration is not applied to the configured local database: `localhost:5433` returned no response during `npm run db:migrate`, including the elevated attempt. Start the configured PostgreSQL instance, then run `npm run db:migrate` before using profile persistence.
+- At the end of this milestone, personalization preferences and username/avatar/bio/social links remained for subsequent work. No database migration was applied and no data was changed.
+
+## Preferences and profile onboarding milestone (2026-11-23)
+
+- Added `UserProfile` and `UserPreferences` models plus `PreferredResourceKind`, `LearningInterest`, and `LearningGoal` enums in migration `20261123130000_add_user_profiles_preferences`.
+- Added authenticated GET/PUT APIs for optional user profile fields and preference selections. The API normalizes unique usernames, validates HTTPS avatar URLs and GitHub/LinkedIn domains, caps bio length, and validates typed preference values.
+- Expanded onboarding into four optional steps: institution, academic progress, learning preferences, and profile setup. Preferences save as choices change; academic selections save as users make them; profile fields save on blur and on finish. Account page links to update the profile later. Public browsing remains available without onboarding.
+- `npm run test:api` passed: 50 tests across 4 files. `npm run typecheck`, `npm run build`, Prisma schema validation/client generation, and `git diff --check` passed.
+- Both onboarding migrations remain unapplied because PostgreSQL at the configured `localhost:5433` endpoint was offline. Start that database and run `npm run db:migrate` before testing onboarding against real data. Live database or UI end-to-end verification was not performed.
+
+## Public discovery foundation milestone (2026-11-23)
+
+- Added public Explore/Search routes backed by course and approved-resource APIs, with course/resource metadata text queries and a real resource-type filter. The landing page now loads real course and approved-resource previews instead of presenting static placeholder content.
+- Added university listing/detail, course detail with associated approved resources, and resource detail with metadata, downloads, and inline preview for PDF/plain text. Department course rows link to course details; unknown routes show a not-found state.
+- Extended the academic API to search courses by code/title/description and resources by title/description/course code/title. Department detail and department-filtered course queries now include GET-coded courses from the same university as general engineering courses. Existing course records and reviewed CSV were not changed; course-to-department sharing is inferred from the owner's stated GET code rule.
+- Updated API and project documentation. No schema change or migration was required.
+- `npm run typecheck` and `npm run build` passed. `npm run test:api` could not execute in the restricted environment because the HTTP tests attempt to bind `0.0.0.0` and Node returned `listen EPERM`; no test assertion ran. Live API/database/UI integration has not been verified.
+- Next: verify the discovery pages against the configured database once available; add explicit user-controlled pagination and course/resource context filters; then proceed to the student workspace. Keep cross-department GET accessibility when implementing personalized course lists.
