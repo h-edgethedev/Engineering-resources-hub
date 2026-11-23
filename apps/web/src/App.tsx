@@ -1,7 +1,10 @@
 import { useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link, Route, Routes, useParams } from 'react-router-dom';
+import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import { LoginPage, ProtectedAccount, RegisterPage, VerifyEmailPage } from './AuthPages';
+import { AcademicOnboarding } from './AcademicOnboarding';
+import { PublicHeader } from './PublicHeader';
+import { CourseDetailPage, ExplorePage, ResourceDetailPage, UniversitiesPage, UniversityDetailPage } from './DiscoveryPages';
 import { useAuth } from './auth';
 
 interface Department {
@@ -31,8 +34,12 @@ interface ApiResponse<T> {
   data: T;
 }
 
+interface LandingCourse { id: string; code: string; title: string; programme: { department: { name: string } }; }
+interface LandingResource { id: string; title: string; type: string; course: { id: string; code: string; title: string }; }
+
 interface DepartmentDetails extends Department {
   faculty: { name: string; slug: string };
+  generalCourses: Array<{ id: string; code: string; title: string; creditUnits: number | null }>;
   programmes: Array<{
     id: string;
     name: string;
@@ -77,6 +84,13 @@ async function fetchDepartment(universitySlug: string, facultySlug: string, depa
   return result.data;
 }
 
+async function fetchLandingList<T>(path: string): Promise<T[]> {
+  const response = await fetch(`/api/v1${path}`);
+  if (!response.ok) throw new Error('Could not load this catalogue section.');
+  const result = await response.json() as ApiResponse<T[]>;
+  return result.data;
+}
+
 function ArrowIcon() {
   return <svg aria-hidden="true" viewBox="0 0 20 20" fill="none"><path d="M4 10h12m-5-5 5 5-5 5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
@@ -89,42 +103,14 @@ function SectionHeading({ eyebrow, title, description }: { eyebrow: string; titl
   return <div className="section-heading"><p className="eyebrow">{eyebrow}</p><h2>{title}</h2>{description && <p>{description}</p>}</div>;
 }
 
-function SiteHeader() {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const { user } = useAuth();
-  const closeMenu = () => setMenuOpen(false);
-
-  return (
-    <header className="site-header">
-      <div className="header-inner">
-        <Link className="brand" to="/" aria-label="Engineering Resources Hub home">
-          <img className="brand-logo" src="/engineering-resources-hub-logo.png" alt="Engineering Resources Hub" width="1200" height="380" />
-        </Link>
-        <button className="menu-toggle" type="button" aria-expanded={menuOpen} aria-controls="primary-nav" onClick={() => setMenuOpen(!menuOpen)}>
-          <span className="sr-only">{menuOpen ? 'Close navigation' : 'Open navigation'}</span>
-          <span /><span />
-        </button>
-        <nav id="primary-nav" className={`primary-nav${menuOpen ? ' is-open' : ''}`} aria-label="Primary navigation">
-          <a href="#courses" onClick={closeMenu}>Explore courses</a>
-          <a href="#resources" onClick={closeMenu}>Resources</a>
-          <a href="#universities" onClick={closeMenu}>Universities</a>
-          <a href="#about" onClick={closeMenu}>About</a>
-          {user ? <Link to="/account" onClick={closeMenu}>My account</Link> : <Link to="/login" onClick={closeMenu}>Sign in</Link>}
-          <Link className="button button-small button-purple" to={user ? '/account' : '/register'} onClick={closeMenu}>{user ? 'Contribute' : 'Get started'} <ArrowIcon /></Link>
-        </nav>
-      </div>
-    </header>
-  );
-}
-
 function HeroSearch() {
   const [searchText, setSearchText] = useState('');
-  const [message, setMessage] = useState('Search is being built. You can browse the verified departments below.');
+  const navigate = useNavigate();
   const suggestions = ['Computer Engineering', 'Electrical and Electronics Engineering', 'Past questions'];
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setMessage(searchText.trim() ? 'Search is not connected yet. Browse departments while we build it.' : 'Enter a course or resource to search when discovery is available.');
+    navigate(searchText.trim() ? `/search?q=${encodeURIComponent(searchText.trim())}` : '/explore');
   }
 
   return (
@@ -135,10 +121,10 @@ function HeroSearch() {
         <input id="site-search" value={searchText} onChange={(event) => setSearchText(event.target.value)} placeholder="Search courses, course codes or learning materials..." />
         <button type="submit">Search <ArrowIcon /></button>
       </form>
-      <p className="search-status" aria-live="polite">{message}</p>
+      <p className="search-status">Search approved resources and the course catalogue.</p>
       <div className="suggestions" aria-label="Suggested searches">
         <span>Try exploring</span>
-        {suggestions.map((suggestion) => <button key={suggestion} type="button" onClick={() => { setSearchText(suggestion); setMessage('Search is not connected yet. Browse departments below.'); }}>{suggestion}</button>)}
+        {suggestions.map((suggestion) => <button key={suggestion} type="button" onClick={() => navigate(`/search?q=${encodeURIComponent(suggestion)}`)}>{suggestion}</button>)}
       </div>
     </div>
   );
@@ -190,12 +176,14 @@ function EmptyCatalogCard({ title, message, action, href }: { title: string; mes
 function LandingPage() {
   const { user } = useAuth();
   const universityQuery = useQuery({ queryKey: ['university', 'university-of-lagos'], queryFn: fetchUniversity });
+  const coursesQuery = useQuery({ queryKey: ['landing-courses'], queryFn: () => fetchLandingList<LandingCourse>('/courses?page=1&pageSize=4') });
+  const resourcesQuery = useQuery({ queryKey: ['landing-resources'], queryFn: () => fetchLandingList<LandingResource>('/resources?page=1&pageSize=3') });
   const departments = universityQuery.data?.faculties.flatMap((faculty) => faculty.departments.map((department) => ({ ...department, facultySlug: faculty.slug, universitySlug: universityQuery.data?.slug }))) ?? [];
   const facultyCount = universityQuery.data?.faculties.length ?? 0;
 
   return (
     <div className="site-shell">
-      <SiteHeader />
+      <PublicHeader />
       <main>
         <Hero departmentCount={departments.length} />
 
@@ -214,14 +202,18 @@ function LandingPage() {
         <section className="section section-courses" id="courses" aria-labelledby="courses-title">
           <div className="section-inner">
             <SectionHeading eyebrow="COURSE DISCOVERY" title="Find your next course" description="Browse by department, then explore course details and related learning materials." />
-            <EmptyCatalogCard title="Course catalogue is coming together" message="Course records will appear here after the academic data is reviewed and added." action="Browse departments" href="#disciplines" />
+            {coursesQuery.isPending && <div className="catalog-message" role="status">Loading courses…</div>}
+            {coursesQuery.isError && <div className="catalog-message catalog-error" role="alert">Courses are temporarily unavailable. <button onClick={() => void coursesQuery.refetch()}>Try again</button></div>}
+            {coursesQuery.data?.length ? <><div className="landing-preview-grid">{coursesQuery.data.map((course) => <article className="landing-preview-card" key={course.id}><p className="card-kicker">{course.code}</p><h3><Link to={`/courses/${course.id}`}>{course.title}</Link></h3><p>{course.programme.department.name}</p></article>)}</div><Link className="text-link section-action" to="/explore">Explore all courses <ArrowIcon /></Link></> : coursesQuery.isSuccess && <EmptyCatalogCard title="No courses are available yet" message="Verified course records will appear here when they are available." action="Browse departments" href="#disciplines" />}
           </div>
         </section>
 
         <section className="section section-resources" id="resources" aria-labelledby="resources-title">
           <div className="section-inner">
-            <div className="section-heading-row"><SectionHeading eyebrow="LEARN TOGETHER" title="Resources for the work ahead" description="Lecture notes, past questions, lab guides and more, organized around your courses." /><a className="text-link section-action" href="#contribute">How to contribute <ArrowIcon /></a></div>
-            <EmptyCatalogCard title="No public resources yet" message="Approved resources will appear here as students contribute and moderators review them." action="Learn how it works" href="#about" />
+            <div className="section-heading-row"><SectionHeading eyebrow="LEARN TOGETHER" title="Resources for the work ahead" description="Lecture notes, past questions, lab guides and more, organized around your courses." /><Link className="text-link section-action" to="/explore">Browse all resources <ArrowIcon /></Link></div>
+            {resourcesQuery.isPending && <div className="catalog-message" role="status">Loading approved resources…</div>}
+            {resourcesQuery.isError && <div className="catalog-message catalog-error" role="alert">Resources are temporarily unavailable. <button onClick={() => void resourcesQuery.refetch()}>Try again</button></div>}
+            {resourcesQuery.data?.length ? <div className="landing-resource-preview">{resourcesQuery.data.map((resource) => <article className="landing-preview-card" key={resource.id}><p className="card-kicker">{resource.type.replaceAll('_', ' ')}</p><h3><Link to={`/resources/${resource.id}`}>{resource.title}</Link></h3><p><Link to={`/courses/${resource.course.id}`}>{resource.course.code} · {resource.course.title}</Link></p></article>)}</div> : resourcesQuery.isSuccess && <EmptyCatalogCard title="No approved resources yet" message="Approved course materials will appear here after they pass review." action="Learn how it works" href="#about" />}
           </div>
         </section>
 
@@ -272,7 +264,7 @@ function DepartmentPage() {
 
   return (
     <div className="site-shell">
-      <SiteHeader />
+      <PublicHeader />
       <main className="department-page">
         <div className="department-page-inner">
           <a className="text-link back-link" href="/#disciplines">← All departments</a>
@@ -287,10 +279,11 @@ function DepartmentPage() {
             ) : department.programmes.map((programme) => (
               <section className="programme-card" key={programme.id}>
                 <div className="programme-heading"><div><p className="card-kicker">ACADEMIC PROGRAMME</p><h2>{programme.name}</h2></div><span>{programme.award ?? 'Programme'}{programme.durationYears ? ` · ${programme.durationYears} years` : ''}</span></div>
-                {programme.courses.length ? <div className="course-list">{programme.courses.map((course) => <article className="course-row" key={course.id}><div><strong>{course.code}</strong><span>{course.title}</span>{course.offerings.map((offering) => <small className="course-context" key={`${offering.academicSession.label}-${offering.semester.label}`}>{offering.semester.programmeLevel.label ?? `${offering.semester.programmeLevel.code} Level`} · {offering.semester.label} · {offering.academicSession.label}</small>)}</div>{course.creditUnits !== null && <small className="course-credits">{course.creditUnits} units</small>}</article>)}</div> : <p className="programme-empty">Course records will appear after they have been validated.</p>}
+                {programme.courses.length ? <div className="course-list">{programme.courses.map((course) => <article className="course-row" key={course.id}><div><Link className="course-detail-link" to={`/courses/${course.id}`}><strong>{course.code}</strong><span>{course.title}</span></Link>{course.offerings.map((offering) => <small className="course-context" key={`${offering.academicSession.label}-${offering.semester.label}`}>{offering.semester.programmeLevel.label ?? `${offering.semester.programmeLevel.code} Level`} · {offering.semester.label} · {offering.academicSession.label}</small>)}</div>{course.creditUnits !== null && <small className="course-credits">{course.creditUnits} units</small>}</article>)}</div> : <p className="programme-empty">Course records will appear after they have been validated.</p>}
                 {programme.levels.length > 0 && <div className="level-list"><h3>Programme structure</h3>{programme.levels.map((level) => <div className="level-row" key={level.id}><strong>{level.label ?? level.code} Level</strong><span>{level.semesters.length ? level.semesters.map((semester) => semester.label).join(' · ') : 'Semester details pending'}</span></div>)}</div>}
               </section>
             ))}
+            {department.generalCourses.length > 0 && <section className="programme-card general-courses-card"><div className="programme-heading"><div><p className="card-kicker">SHARED ACROSS DEPARTMENTS</p><h2>General Engineering courses</h2></div></div><p className="programme-empty">These GET courses are available to students across departments at this university.</p><div className="course-list">{department.generalCourses.map((course) => <article className="course-row" key={course.id}><div><Link className="course-detail-link" to={`/courses/${course.id}`}><strong>{course.code}</strong><span>{course.title}</span></Link></div>{course.creditUnits !== null && <small className="course-credits">{course.creditUnits} units</small>}</article>)}</div></section>}
           </>}
         </div>
       </main>
@@ -302,12 +295,20 @@ function DepartmentPage() {
 function App() {
   return (
     <Routes>
+      <Route path="/explore" element={<ExplorePage />} />
+      <Route path="/search" element={<ExplorePage />} />
+      <Route path="/universities" element={<UniversitiesPage />} />
+      <Route path="/universities/:slug" element={<UniversityDetailPage />} />
+      <Route path="/courses/:courseId" element={<CourseDetailPage />} />
+      <Route path="/resources/:resourceId" element={<ResourceDetailPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/verify-email" element={<VerifyEmailPage />} />
+      <Route path="/onboarding" element={<AcademicOnboarding />} />
       <Route path="/account" element={<ProtectedAccount />} />
       <Route path="/universities/:universitySlug/faculties/:facultySlug/departments/:departmentSlug" element={<DepartmentPage />} />
-      <Route path="*" element={<LandingPage />} />
+      <Route path="/" element={<LandingPage />} />
+      <Route path="*" element={<main className="not-found-page"><h1>Page not found</h1><p>The address may be incorrect or the page may have moved.</p><Link className="button button-purple" to="/">Return home</Link></main>} />
     </Routes>
   );
 }

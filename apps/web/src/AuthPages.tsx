@@ -27,6 +27,8 @@ function AuthForm({ mode }: { mode: 'login' | 'register' }) {
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isRegistering = mode === 'register';
@@ -47,12 +49,17 @@ function AuthForm({ mode }: { mode: 'login' | 'register' }) {
       setError('Choose a password with at least 12 characters.');
       return;
     }
+    if (isRegistering && password !== confirmPassword) {
+      setError('The passwords do not match.');
+      return;
+    }
 
     setIsSubmitting(true);
     try {
       if (isRegistering) {
-        await signUp(displayName, email, password);
-        navigate(`/verify-email?email=${encodeURIComponent(email)}`, { replace: true });
+        const normalizedEmail = email.trim().toLowerCase();
+        await signUp(displayName, normalizedEmail, password);
+        navigate(`/verify-email?email=${encodeURIComponent(normalizedEmail)}`, { replace: true, state: { verificationEmailSent: true } });
         return;
       }
       await signIn(email, password);
@@ -73,8 +80,19 @@ function AuthForm({ mode }: { mode: 'login' | 'register' }) {
       <form className="auth-form" onSubmit={handleSubmit}>
         {isRegistering && <label>Full name<input autoComplete="name" name="displayName" value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={100} required /></label>}
         <label>Email address<input type="email" autoComplete="email" name="email" value={email} onChange={(event) => setEmail(event.target.value)} maxLength={254} required /></label>
-        <label>Password<input type="password" autoComplete={isRegistering ? 'new-password' : 'current-password'} name="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={isRegistering ? 12 : undefined} maxLength={72} required aria-describedby={isRegistering ? 'password-hint' : undefined} /></label>
-        {isRegistering && <p id="password-hint" className="field-hint">Use at least 12 characters. New accounts start with Student access.</p>}
+        <label>Password<div className="password-control"><input id="signup-password" type={passwordVisible ? 'text' : 'password'} autoComplete={isRegistering ? 'new-password' : 'current-password'} name="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={isRegistering ? 12 : undefined} maxLength={72} required aria-describedby={isRegistering ? 'password-hint' : undefined} /><button className="password-visibility" type="button" aria-controls={isRegistering ? 'signup-password signup-password-confirm' : 'signup-password'} onClick={() => setPasswordVisible(!passwordVisible)}>{passwordVisible ? 'Hide' : 'Show'}</button></div></label>
+        {isRegistering && <>
+          <label>Confirm password<div className="password-control"><input id="signup-password-confirm" type={passwordVisible ? 'text' : 'password'} autoComplete="new-password" name="confirmPassword" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} maxLength={72} required /></div></label>
+          <div id="password-hint" className="password-requirements" aria-live="polite">
+            <p>Password requirements</p>
+            <ul>
+              <li className={password.length >= 12 ? 'is-met' : ''}>At least 12 characters</li>
+              <li className={password.length > 0 && new TextEncoder().encode(password).length <= 72 ? 'is-met' : ''}>No more than 72 UTF-8 bytes</li>
+              <li className={confirmPassword && password === confirmPassword ? 'is-met' : ''}>Passwords match</li>
+            </ul>
+            <p className="field-hint">New accounts start with Student access.</p>
+          </div>
+        </>}
         {error && <p className="auth-error" role="alert">{error}</p>}
         {!isRegistering && error.toLowerCase().includes('verify your email') && <p className="auth-switch"><Link to={`/verify-email?email=${encodeURIComponent(email)}`}>Resend a verification link</Link></p>}
         {isRegistering && error.toLowerCase().includes('verification email') && <p className="auth-switch"><Link to={`/verify-email?email=${encodeURIComponent(email)}`}>Request a verification link</Link></p>}
@@ -130,6 +148,7 @@ export function ProtectedAccount() {
           <h1 id="account-title">Hello, {user.displayName}</h1>
           <p className="account-email">{user.email}</p>
           <div className="account-roles"><h2>Access</h2>{roles.length ? <ul>{roles.map((role, index) => <li key={`${role}-${index}`}>{role}</li>)}</ul> : <p>No roles have been assigned.</p>}</div>
+          <div className="account-next"><span className="account-next-icon" aria-hidden="true">⌂</span><div><h2>Your profile</h2><p>Add or update academic details, learning preferences, and profile information. All fields are optional.</p><Link className="text-link" to="/onboarding">Set up or edit profile <span aria-hidden="true">→</span></Link></div></div>
           {!canSubmitResources && <div className="account-next"><span className="account-next-icon" aria-hidden="true">▤</span><div><h2>Resource contributions</h2><p>This account does not have a Student or Contributor grant for resource submission.</p></div></div>}
           {canSubmitResources && <ResourceSubmission />}
           {message && <p className="auth-error" role="alert">{message}</p>}
@@ -149,11 +168,13 @@ export function VerifyEmailPage() {
   const navigate = useNavigate();
   const query = new URLSearchParams(location.search);
   const token = query.get('token') ?? '';
+  const emailWasSent = Boolean((location.state as { verificationEmailSent?: boolean } | null)?.verificationEmailSent);
   const [email, setEmail] = useState(query.get('email') ?? '');
   const [status, setStatus] = useState<'checking' | 'ready' | 'verified' | 'invalid'>('ready');
   const [message, setMessage] = useState('');
   const [resendSent, setResendSent] = useState(false);
   const [isResending, setIsResending] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
   const attemptedToken = useRef('');
 
   useEffect(() => {
@@ -177,6 +198,12 @@ export function VerifyEmailPage() {
     });
   }, [navigate, token]);
 
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timeout = window.setTimeout(() => setResendCooldown((seconds) => Math.max(0, seconds - 1)), 1000);
+    return () => window.clearTimeout(timeout);
+  }, [resendCooldown]);
+
   async function handleResend(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage('');
@@ -190,6 +217,7 @@ export function VerifyEmailPage() {
       });
       if (!response.ok) throw new Error(await responseErrorMessage(response, 'Could not request a verification link.'));
       setResendSent(true);
+      setResendCooldown(60);
     } catch (resendError) {
       setMessage(resendError instanceof Error ? resendError.message : 'Could not request a verification link.');
     } finally {
@@ -200,13 +228,20 @@ export function VerifyEmailPage() {
   if (status === 'checking') return <AuthFrame eyebrow="VERIFY YOUR EMAIL" title="Checking your link" description="We’re confirming your email address."><p className="auth-status" role="status">Please wait…</p></AuthFrame>;
   if (status === 'verified' || new URLSearchParams(location.search).has('verified')) return <AuthFrame eyebrow="EMAIL VERIFIED" title="You’re ready to sign in" description="Your email address has been verified. Sign in to access your account."><Link className="button button-purple auth-submit" to="/login">Go to sign in</Link></AuthFrame>;
 
-  return <AuthFrame eyebrow="VERIFY YOUR EMAIL" title="Check your inbox" description={email ? `We sent a verification link to ${email}. The link expires in 30 minutes.` : 'Enter your signup email and we’ll send a new verification link if it needs verification.'}>
+  const verificationDescription = emailWasSent && email
+    ? `We sent a verification link to ${email}. The link expires in 30 minutes. If it doesn't arrive, check spam or request another link.`
+    : email
+      ? `No email delivery was confirmed for ${email}. Enter the address below to request a verification link if the account still needs verification.`
+      : 'Enter your signup email to request a verification link if the account needs verification.';
+
+  return <AuthFrame eyebrow="VERIFY YOUR EMAIL" title={emailWasSent ? 'Check your inbox' : 'Verify your email'} description={verificationDescription}>
     {status === 'invalid' && <p className="auth-error" role="alert">{message}</p>}
-    {resendSent ? <div className="submission-success" role="status"><strong>Request received</strong><span>If this email needs verification, a fresh link will arrive shortly.</span></div> : <form className="auth-form" onSubmit={handleResend}>
-      <label>Email address<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} maxLength={254} required /></label>
+    {resendSent && <div className="submission-success" role="status"><strong>Request received</strong><span>If this email needs verification, a fresh link will arrive shortly.</span></div>}
+    <form className="auth-form" onSubmit={handleResend}>
+      <label>Email address<input type="email" autoComplete="email" value={email} onChange={(event) => { setEmail(event.target.value); setResendSent(false); }} maxLength={254} required /></label>
       {message && status !== 'invalid' && <p className="auth-error" role="alert">{message}</p>}
-      <button className="button button-purple auth-submit" type="submit" disabled={isResending}>{isResending ? 'Sending…' : 'Resend verification email'}</button>
-    </form>}
+      <button className="button button-purple auth-submit" type="submit" disabled={isResending || resendCooldown > 0}>{isResending ? 'Sending…' : resendCooldown > 0 ? `Request another link in ${resendCooldown}s` : 'Resend verification email'}</button>
+    </form>
     <p className="auth-switch"><Link to="/login">Return to sign in</Link></p>
   </AuthFrame>;
 }

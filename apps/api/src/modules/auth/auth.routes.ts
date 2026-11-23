@@ -6,6 +6,10 @@ import { csrfController, loginController, logoutController, meController, regist
 import { grantIdParamsSchema, grantRoleSchema, resendVerificationSchema, userIdParamsSchema, verifyEmailSchema } from './auth.schemas.js';
 import { grantRole, revokeRole } from './role.service.js';
 import { ApiError } from '../../errors/ApiError.js';
+import { getAcademicProfileController, saveAcademicProfileController } from './academic-profile.controller.js';
+import { academicProfileInputSchema } from './academic-profile.schemas.js';
+import { userPreferencesInputSchema, userProfileInputSchema } from './onboarding.schemas.js';
+import { getUserPreferencesController, getUserProfileController, saveUserPreferencesController, saveUserProfileController } from './onboarding.controller.js';
 
 export const authRouter = Router();
 
@@ -30,6 +34,12 @@ authRouter.post('/login', requireTrustedOrigin, credentialLimiter, loginControll
 authRouter.post('/verify-email', requireTrustedOrigin, verificationLimiter, validateRequest({ body: verifyEmailSchema }), verifyEmailController);
 authRouter.post('/resend-verification', requireTrustedOrigin, verificationLimiter, validateRequest({ body: resendVerificationSchema }), resendVerificationController);
 authRouter.get('/me', requireAuth, meController);
+authRouter.get('/me/academic-profile', requireAuth, getAcademicProfileController);
+authRouter.put('/me/academic-profile', requireAuth, validateRequest({ body: academicProfileInputSchema }), saveAcademicProfileController);
+authRouter.get('/me/profile', requireAuth, getUserProfileController);
+authRouter.put('/me/profile', requireAuth, validateRequest({ body: userProfileInputSchema }), saveUserProfileController);
+authRouter.get('/me/preferences', requireAuth, getUserPreferencesController);
+authRouter.put('/me/preferences', requireAuth, validateRequest({ body: userPreferencesInputSchema }), saveUserPreferencesController);
 authRouter.get('/csrf', requireAuth, csrfController);
 authRouter.post('/logout', requireAuth, requireCsrf, logoutController);
 

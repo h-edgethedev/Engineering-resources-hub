@@ -70,7 +70,7 @@ async function validateAcademicContext(context: AcademicContext) {
 }
 
 export async function listResources(query: ListResourcesQuery, actor?: AuthContext) {
-  const { page, pageSize, status, ...filters } = query;
+  const { page, pageSize, status, q, ...filters } = query;
   const visibility: object[] = [{ status: 'APPROVED' }];
   if (actor) {
     visibility.push({ uploadedById: actor.user.id });
@@ -84,6 +84,12 @@ export async function listResources(query: ListResourcesQuery, actor?: AuthConte
   }
   const where = {
     ...filters,
+    ...(q ? { OR: [
+      { title: { contains: q, mode: 'insensitive' as const } },
+      { description: { contains: q, mode: 'insensitive' as const } },
+      { course: { code: { contains: q, mode: 'insensitive' as const } } },
+      { course: { title: { contains: q, mode: 'insensitive' as const } } },
+    ] } : {}),
     ...(actor?.user.roleAssignments.some((grant) => grant.role === 'SUPER_ADMIN') ? (status ? { status } : {}) : {}),
     AND: [
       { OR: visibility },

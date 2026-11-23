@@ -125,7 +125,7 @@ beforeEach(() => {
     csrfTokenHash,
     expiresAt: new Date(Date.now() + 60_000),
     revokedAt: null,
-    user: { id: userId, email: 'student@example.test', displayName: 'Test Student', status: 'ACTIVE', roleAssignments: [{ id: 'student-role', role: 'STUDENT', universityId: null, scopeKey: 'global' }] },
+    user: { id: userId, email: 'student@example.test', displayName: 'Test Student', status: 'ACTIVE', emailVerifiedAt: new Date(), roleAssignments: [{ id: 'student-role', role: 'STUDENT', universityId: null, scopeKey: 'global' }] },
   });
 });
 
@@ -261,7 +261,7 @@ describe('resource management endpoints', () => {
   it('prevents moderators from approving their own submissions', async () => {
     db.authSession.findUnique.mockResolvedValueOnce({
       id: 'test-session-id', csrfTokenHash, expiresAt: new Date(Date.now() + 60_000), revokedAt: null,
-      user: { id: userId, email: 'student@example.test', displayName: 'Test Student', status: 'ACTIVE', roleAssignments: [{ id: 'moderator-role', role: 'MODERATOR', universityId, scopeKey: `university:${universityId}` }] },
+      user: { id: userId, email: 'student@example.test', displayName: 'Test Student', status: 'ACTIVE', emailVerifiedAt: new Date(), roleAssignments: [{ id: 'moderator-role', role: 'MODERATOR', universityId, scopeKey: `university:${universityId}` }] },
     });
     const response = await request(`/api/v1/resources/${resourceId}/moderation`, json({ action: 'APPROVED' }));
     expect(response.status).toBe(403);
@@ -271,7 +271,7 @@ describe('resource management endpoints', () => {
   it('enforces the university boundary for moderator decisions', async () => {
     db.authSession.findUnique.mockResolvedValueOnce({
       id: 'test-session-id', csrfTokenHash, expiresAt: new Date(Date.now() + 60_000), revokedAt: null,
-      user: { id: '941e3fa0-122b-11e1-b85c-61cd3cbb3216', email: 'moderator@example.test', displayName: 'Moderator', status: 'ACTIVE', roleAssignments: [{ id: 'moderator-role', role: 'MODERATOR', universityId: '941e3fa0-122b-11e1-b85c-61cd3cbb3217', scopeKey: 'university:other' }] },
+      user: { id: '941e3fa0-122b-11e1-b85c-61cd3cbb3216', email: 'moderator@example.test', displayName: 'Moderator', status: 'ACTIVE', emailVerifiedAt: new Date(), roleAssignments: [{ id: 'moderator-role', role: 'MODERATOR', universityId: '941e3fa0-122b-11e1-b85c-61cd3cbb3217', scopeKey: 'university:other' }] },
     });
     const response = await request(`/api/v1/resources/${resourceId}/moderation`, json({ action: 'APPROVED' }));
     expect(response.status).toBe(403);
@@ -281,7 +281,7 @@ describe('resource management endpoints', () => {
   it('allows an in-scope moderator to approve a different user submission', async () => {
     db.authSession.findUnique.mockResolvedValueOnce({
       id: 'test-session-id', csrfTokenHash, expiresAt: new Date(Date.now() + 60_000), revokedAt: null,
-      user: { id: '941e3fa0-122b-11e1-b85c-61cd3cbb3218', email: 'moderator@example.test', displayName: 'Moderator', status: 'ACTIVE', roleAssignments: [{ id: 'moderator-role', role: 'MODERATOR', universityId, scopeKey: `university:${universityId}` }] },
+      user: { id: '941e3fa0-122b-11e1-b85c-61cd3cbb3218', email: 'moderator@example.test', displayName: 'Moderator', status: 'ACTIVE', emailVerifiedAt: new Date(), roleAssignments: [{ id: 'moderator-role', role: 'MODERATOR', universityId, scopeKey: `university:${universityId}` }] },
     });
     const response = await request(`/api/v1/resources/${resourceId}/moderation`, json({ action: 'APPROVED' }));
     expect(response.status).toBe(200);

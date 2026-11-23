@@ -37,6 +37,7 @@ export const resourceIdParamsSchema = z.object({ resourceId: uuid });
 
 export const listResourcesQuerySchema = z.object({
   courseId: uuid.optional(),
+  q: z.string().trim().min(1).max(200).optional(),
   type: z.enum(resourceTypes).optional(),
   status: z.enum(resourceStatuses).optional(),
   academicSessionId: uuid.optional(),
