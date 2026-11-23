@@ -71,14 +71,14 @@ async function validateAcademicContext(context: AcademicContext) {
 
 export async function listResources(query: ListResourcesQuery, actor?: AuthContext) {
   const { page, pageSize, status, q, reviewQueue, ...filters } = query;
+  const isSuperAdmin = actor ? hasRole(actor, 'SUPER_ADMIN') : false;
   if (reviewQueue && (!actor || !hasRole(actor, 'SUPER_ADMIN', 'MODERATOR'))) {
     throw new ApiError(403, 'FORBIDDEN', 'Only moderators and Super Administrators can view the review queue.');
   }
   const visibility: object[] = [{ status: 'APPROVED' }];
   if (actor) {
-    visibility.push({ uploadedById: actor.user.id });
-    if (hasRole(actor, 'SUPER_ADMIN')) visibility.push({});
-    else {
+    if (!isSuperAdmin) {
+      visibility.push({ uploadedById: actor.user.id });
       const universityIds = actor.user.roleAssignments
         .filter((grant) => ['UNIVERSITY_ADMIN', 'MODERATOR'].includes(grant.role) && grant.universityId)
         .map((grant) => grant.universityId as string);
@@ -93,11 +93,11 @@ export async function listResources(query: ListResourcesQuery, actor?: AuthConte
       { course: { code: { contains: q, mode: 'insensitive' as const } } },
       { course: { title: { contains: q, mode: 'insensitive' as const } } },
     ] } : {}),
-    ...(actor?.user.roleAssignments.some((grant) => grant.role === 'SUPER_ADMIN') ? (status ? { status } : {}) : {}),
+    ...(isSuperAdmin ? (status ? { status } : {}) : {}),
     AND: [
-      { OR: visibility },
+      ...(!isSuperAdmin ? [{ OR: visibility }] : []),
       ...(reviewQueue ? [{ status: 'PENDING' as const }, { uploadedById: { not: actor?.user.id } }] : []),
-      ...(!actor?.user.roleAssignments.some((grant) => grant.role === 'SUPER_ADMIN') && status ? [{ status }] : []),
+      ...(!isSuperAdmin && status ? [{ status }] : []),
     ],
   };
   const [total, items] = await Promise.all([

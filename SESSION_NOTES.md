@@ -128,3 +128,11 @@ The API auth and moderation flows and local upload workflow have already been im
 - Elevated role grants now require the target user's email to be verified. UI selection excludes inactive/unverified users; backend validation enforces the rule too.
 - Added privileged navigation links and documented the new workflows. No database migration was needed.
 - `npm run typecheck` and `npm run build` passed after this milestone. API tests remain unverified in the sandbox because their HTTP harness cannot bind `0.0.0.0` (`listen EPERM`). Live moderation/role workflows have not been exercised against the configured database.
+
+## Super Administrator resource review visibility fix (2026-11-23)
+
+- Investigated why a Student's `Week 4: Combinational Logic and Circuits` upload was absent from the Super Administrator's review page. The pending row existed in the configured database, and both browser sessions used the same local API/database.
+- The resource list query incorrectly used an empty Prisma `OR` condition (`{}`) as a wildcard for Super Administrators. Prisma did not treat it as match-all, so the API returned only the administrator's own upload.
+- Updated `listResources` so Super Administrators bypass the ordinary visibility `OR` filter while retaining requested status, search, and review-queue conditions.
+- Verified the service query returned all seven pending resources, including the Week 4 upload. Reloaded `/app/admin/resources` in Safari and confirmed the Week 4 card is visible with Approve/Reject controls. No moderation decision was submitted.
+- `npm run typecheck` and `git diff --check` passed. API test suite was not run.
