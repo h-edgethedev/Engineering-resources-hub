@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'rea
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from './auth';
 import { ResourceSubmission } from './ResourceSubmission';
+import { PublicHeader } from './PublicHeader';
 
 function AuthFrame({ eyebrow, title, description, children }: { eyebrow: string; title: string; description: string; children: ReactNode }) {
   return (
@@ -141,7 +142,7 @@ export function ProtectedAccount() {
 
   return (
     <div className="site-shell">
-      <header className="site-header"><div className="header-inner"><Link className="brand" to="/" aria-label="Engineering Resources Hub home"><img className="brand-logo" src="/engineering-resources-hub-logo.png" alt="Engineering Resources Hub" width="1200" height="380" /></Link><Link className="text-link" to="/">Back to explore</Link></div></header>
+      <PublicHeader />
       <main className="account-page">
         <section className="account-card" aria-labelledby="account-title">
           <p className="eyebrow">YOUR ENGHUB ACCOUNT</p>

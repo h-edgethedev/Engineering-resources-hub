@@ -10,6 +10,8 @@ import { getAcademicProfileController, saveAcademicProfileController } from './a
 import { academicProfileInputSchema } from './academic-profile.schemas.js';
 import { userPreferencesInputSchema, userProfileInputSchema } from './onboarding.schemas.js';
 import { getUserPreferencesController, getUserProfileController, saveUserPreferencesController, saveUserProfileController } from './onboarding.controller.js';
+import { adminUsersQuerySchema } from './admin.schemas.js';
+import { listUsers } from './admin.service.js';
 
 export const authRouter = Router();
 
@@ -42,6 +44,15 @@ authRouter.get('/me/preferences', requireAuth, getUserPreferencesController);
 authRouter.put('/me/preferences', requireAuth, validateRequest({ body: userPreferencesInputSchema }), saveUserPreferencesController);
 authRouter.get('/csrf', requireAuth, csrfController);
 authRouter.post('/logout', requireAuth, requireCsrf, logoutController);
+
+authRouter.get('/admin/users', requireAuth, requireAnyRole('SUPER_ADMIN'), async (request, response, next) => {
+  try {
+    const parsed = adminUsersQuerySchema.safeParse(request.query);
+    if (!parsed.success) throw new ApiError(400, 'VALIDATION_ERROR', 'Request data is invalid.', parsed.error.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message })));
+    const result = await listUsers(parsed.data);
+    response.json({ data: result.users, meta: result.meta });
+  } catch (error) { next(error); }
+});
 
 authRouter.post('/admin/users/:userId/roles', requireAuth, requireCsrf, requireAnyRole('SUPER_ADMIN', 'UNIVERSITY_ADMIN'), validateRequest({ params: userIdParamsSchema, body: grantRoleSchema }), async (request, response, next) => {
   try {

@@ -70,7 +70,10 @@ async function validateAcademicContext(context: AcademicContext) {
 }
 
 export async function listResources(query: ListResourcesQuery, actor?: AuthContext) {
-  const { page, pageSize, status, q, ...filters } = query;
+  const { page, pageSize, status, q, reviewQueue, ...filters } = query;
+  if (reviewQueue && (!actor || !hasRole(actor, 'SUPER_ADMIN', 'MODERATOR'))) {
+    throw new ApiError(403, 'FORBIDDEN', 'Only moderators and Super Administrators can view the review queue.');
+  }
   const visibility: object[] = [{ status: 'APPROVED' }];
   if (actor) {
     visibility.push({ uploadedById: actor.user.id });
@@ -93,6 +96,7 @@ export async function listResources(query: ListResourcesQuery, actor?: AuthConte
     ...(actor?.user.roleAssignments.some((grant) => grant.role === 'SUPER_ADMIN') ? (status ? { status } : {}) : {}),
     AND: [
       { OR: visibility },
+      ...(reviewQueue ? [{ status: 'PENDING' as const }, { uploadedById: { not: actor?.user.id } }] : []),
       ...(!actor?.user.roleAssignments.some((grant) => grant.role === 'SUPER_ADMIN') && status ? [{ status }] : []),
     ],
   };

@@ -5,6 +5,7 @@ import { LoginPage, ProtectedAccount, RegisterPage, VerifyEmailPage } from './Au
 import { AcademicOnboarding } from './AcademicOnboarding';
 import { PublicHeader } from './PublicHeader';
 import { CourseDetailPage, ExplorePage, ResourceDetailPage, UniversitiesPage, UniversityDetailPage } from './DiscoveryPages';
+import { AdminResourcesPage, AdminUsersPage, ModerationQueuePage } from './AdminPages';
 import { useAuth } from './auth';
 
 interface Department {
@@ -301,6 +302,9 @@ function App() {
       <Route path="/universities/:slug" element={<UniversityDetailPage />} />
       <Route path="/courses/:courseId" element={<CourseDetailPage />} />
       <Route path="/resources/:resourceId" element={<ResourceDetailPage />} />
+      <Route path="/app/admin/resources" element={<AdminResourcesPage />} />
+      <Route path="/app/admin/users" element={<AdminUsersPage />} />
+      <Route path="/app/moderation/queue" element={<ModerationQueuePage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/verify-email" element={<VerifyEmailPage />} />

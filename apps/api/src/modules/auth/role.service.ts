@@ -23,8 +23,9 @@ export async function grantRole(userId: string, input: GrantRoleInput, actor: Au
     if (!university) throw new ApiError(404, 'UNIVERSITY_NOT_FOUND', 'University was not found.');
   }
 
-  const target = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, status: true } });
+  const target = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, status: true, emailVerifiedAt: true } });
   if (!target || target.status !== 'ACTIVE') throw new ApiError(404, 'USER_NOT_FOUND', 'Active user was not found.');
+  if (!target.emailVerifiedAt) throw new ApiError(409, 'USER_EMAIL_UNVERIFIED', 'Verify the user’s email before assigning a privileged role.');
   const scopeKey = input.universityId ? `university:${input.universityId}` : 'global';
   try {
     return await prisma.roleAssignment.create({
