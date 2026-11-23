@@ -50,4 +50,5 @@ export async function verifyEmailAddress(token: string) {
     if (result.count !== 1) throw new ApiError(400, 'INVALID_OR_EXPIRED_VERIFICATION_TOKEN', 'This verification link is invalid or has expired. Request a new verification email.');
     await transaction.user.update({ where: { id: record.userId }, data: { emailVerifiedAt: now } });
   });
+  return record.userId;
 }

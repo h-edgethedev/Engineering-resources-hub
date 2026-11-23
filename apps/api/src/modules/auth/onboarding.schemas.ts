@@ -17,7 +17,7 @@ const githubProfileUrl = z.string().trim().url().refine((value) => secureUrl(val
 const linkedInProfileUrl = z.string().trim().url().refine((value) => secureUrl(value, ['linkedin.com', 'www.linkedin.com']), 'must be a valid HTTPS LinkedIn profile URL').nullable();
 
 export const userProfileInputSchema = z.object({
-  username: z.string().trim().toLowerCase().regex(/^[a-z0-9_]{3,30}$/, 'must be 3–30 characters using letters, numbers, or underscores').nullable(),
+  username: z.string().trim().toLowerCase().min(3).max(30).regex(/^[a-z0-9_]{3,30}$/, 'must be 3–30 characters using letters, numbers, or underscores'),
   avatarUrl: optionalHttpsUrl,
   bio: z.string().trim().max(280).nullable(),
   githubUrl: githubProfileUrl,

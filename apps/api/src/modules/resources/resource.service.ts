@@ -70,8 +70,11 @@ async function validateAcademicContext(context: AcademicContext) {
 }
 
 export async function listResources(query: ListResourcesQuery, actor?: AuthContext) {
-  const { page, pageSize, status, q, reviewQueue, ...filters } = query;
+  const { page, pageSize, status, q, mine, reviewQueue, ...filters } = query;
   const isSuperAdmin = actor ? hasRole(actor, 'SUPER_ADMIN') : false;
+  if (mine && !actor) {
+    throw new ApiError(401, 'AUTHENTICATION_REQUIRED', 'Sign in to view your submitted resources.');
+  }
   if (reviewQueue && (!actor || !hasRole(actor, 'SUPER_ADMIN', 'MODERATOR'))) {
     throw new ApiError(403, 'FORBIDDEN', 'Only moderators and Super Administrators can view the review queue.');
   }
@@ -96,6 +99,7 @@ export async function listResources(query: ListResourcesQuery, actor?: AuthConte
     ...(isSuperAdmin ? (status ? { status } : {}) : {}),
     AND: [
       ...(!isSuperAdmin ? [{ OR: visibility }] : []),
+      ...(mine && actor ? [{ uploadedById: actor.user.id }] : []),
       ...(reviewQueue ? [{ status: 'PENDING' as const }, { uploadedById: { not: actor?.user.id } }] : []),
       ...(!isSuperAdmin && status ? [{ status }] : []),
     ],

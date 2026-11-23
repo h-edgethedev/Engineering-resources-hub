@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom';
-import { LoginPage, ProtectedAccount, RegisterPage, VerifyEmailPage } from './AuthPages';
+import { LoginPage, ProtectedAccount, ProtectedResourceSubmissionPage, RegisterPage, VerifyEmailPage } from './AuthPages';
 import { AcademicOnboarding } from './AcademicOnboarding';
 import { PublicHeader } from './PublicHeader';
 import { CourseDetailPage, ExplorePage, ResourceDetailPage, UniversitiesPage, UniversityDetailPage } from './DiscoveryPages';
@@ -305,6 +305,7 @@ function App() {
       <Route path="/app/admin/resources" element={<AdminResourcesPage />} />
       <Route path="/app/admin/users" element={<AdminUsersPage />} />
       <Route path="/app/moderation/queue" element={<ModerationQueuePage />} />
+      <Route path="/app/resources/new" element={<ProtectedResourceSubmissionPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/verify-email" element={<VerifyEmailPage />} />

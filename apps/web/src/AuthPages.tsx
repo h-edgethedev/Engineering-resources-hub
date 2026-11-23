@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from './auth';
-import { ResourceSubmission } from './ResourceSubmission';
-import { PublicHeader } from './PublicHeader';
+import { AccountDashboard, ResourceSubmissionWorkspace } from './AccountPages';
 
 function AuthFrame({ eyebrow, title, description, children }: { eyebrow: string; title: string; description: string; children: ReactNode }) {
   return (
@@ -64,7 +63,9 @@ function AuthForm({ mode }: { mode: 'login' | 'register' }) {
         return;
       }
       await signIn(email, password);
-      navigate(returnTo, { replace: true });
+      const profileResponse = await fetch('/api/v1/auth/me/profile', { credentials: 'include' });
+      const profileResult = profileResponse.ok ? await profileResponse.json() as { data?: { profile?: { username?: string | null } | null } } : null;
+      navigate(profileResult?.data?.profile?.username ? returnTo : '/onboarding', { replace: true });
     } catch (submissionError) {
       setError(submissionError instanceof Error ? submissionError.message : 'Could not sign you in. Please try again.');
     } finally {
@@ -105,66 +106,31 @@ function AuthForm({ mode }: { mode: 'login' | 'register' }) {
   );
 }
 
-const roleLabels: Record<string, string> = {
-  SUPER_ADMIN: 'Super Administrator',
-  UNIVERSITY_ADMIN: 'University Administrator',
-  MODERATOR: 'Moderator',
-  CONTRIBUTOR: 'Contributor',
-  STUDENT: 'Student',
-};
-
 export function ProtectedAccount() {
-  const { user, isLoading, error, refresh, signOut } = useAuth();
+  const { user, isLoading, error, refresh } = useAuth();
   const location = useLocation();
-  const navigate = useNavigate();
-  const [message, setMessage] = useState('');
-  const [isSigningOut, setIsSigningOut] = useState(false);
-
   if (isLoading) return <AuthFrame eyebrow="YOUR ACCOUNT" title="Checking your session" description="One moment while we restore your account."><p className="auth-status" role="status">Loading…</p></AuthFrame>;
   if (error) return <AuthFrame eyebrow="YOUR ACCOUNT" title="We couldn’t check your session" description={error.message}><button className="button button-purple auth-submit" onClick={() => void refresh()}>Try again</button></AuthFrame>;
   if (!user) return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />;
+  return <AccountDashboard user={user} />;
+}
 
-  async function handleSignOut() {
-    setMessage('');
-    setIsSigningOut(true);
-    try {
-      await signOut();
-      navigate('/', { replace: true });
-    } catch (signOutError) {
-      setMessage(signOutError instanceof Error ? signOutError.message : 'Could not sign out. Please try again.');
-    } finally {
-      setIsSigningOut(false);
-    }
-  }
-
-  const roles = user.roleAssignments.map((assignment) => roleLabels[assignment.role] ?? assignment.role);
-  const canSubmitResources = user.roleAssignments.some((assignment) => ['STUDENT', 'CONTRIBUTOR', 'SUPER_ADMIN'].includes(assignment.role));
-
-  return (
-    <div className="site-shell">
-      <PublicHeader />
-      <main className="account-page">
-        <section className="account-card" aria-labelledby="account-title">
-          <p className="eyebrow">YOUR ENGHUB ACCOUNT</p>
-          <h1 id="account-title">Hello, {user.displayName}</h1>
-          <p className="account-email">{user.email}</p>
-          <div className="account-roles"><h2>Access</h2>{roles.length ? <ul>{roles.map((role, index) => <li key={`${role}-${index}`}>{role}</li>)}</ul> : <p>No roles have been assigned.</p>}</div>
-          <div className="account-next"><span className="account-next-icon" aria-hidden="true">⌂</span><div><h2>Your profile</h2><p>Add or update academic details, learning preferences, and profile information. All fields are optional.</p><Link className="text-link" to="/onboarding">Set up or edit profile <span aria-hidden="true">→</span></Link></div></div>
-          {!canSubmitResources && <div className="account-next"><span className="account-next-icon" aria-hidden="true">▤</span><div><h2>Resource contributions</h2><p>This account does not have a Student or Contributor grant for resource submission.</p></div></div>}
-          {canSubmitResources && <ResourceSubmission />}
-          {message && <p className="auth-error" role="alert">{message}</p>}
-          <button className="button button-outline" type="button" onClick={() => void handleSignOut()} disabled={isSigningOut}>{isSigningOut ? 'Signing out…' : 'Sign out'}</button>
-        </section>
-      </main>
-      <footer className="account-footer">© {new Date().getFullYear()} EngHub · Open knowledge for engineering</footer>
-    </div>
-  );
+export function ProtectedResourceSubmissionPage() {
+  const { user, isLoading, error, refresh } = useAuth();
+  const location = useLocation();
+  if (isLoading) return <main className="account-page"><p className="auth-status" role="status">Checking your account…</p></main>;
+  if (error) return <main className="account-page"><p className="auth-error" role="alert">{error.message}</p><button onClick={() => void refresh()}>Try again</button></main>;
+  if (!user) return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />;
+  const canSubmit = user.roleAssignments.some((assignment) => ['STUDENT', 'CONTRIBUTOR', 'SUPER_ADMIN'].includes(assignment.role));
+  if (!canSubmit) return <main className="not-found-page"><h1>Resource upload access required</h1><p>Your account needs Student, Contributor, or Super Administrator access to submit materials.</p><Link className="button button-purple" to="/account">Back to my account</Link></main>;
+  return <ResourceSubmissionWorkspace />;
 }
 
 export function LoginPage() { return <AuthForm mode="login" />; }
 export function RegisterPage() { return <AuthForm mode="register" />; }
 
 export function VerifyEmailPage() {
+  const { acceptVerifiedSession } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const query = new URLSearchParams(location.search);
@@ -189,15 +155,17 @@ export function VerifyEmailPage() {
       body: JSON.stringify({ token }),
     }).then(async (response) => {
       if (!response.ok) throw new Error(await responseErrorMessage(response, 'This verification link could not be used.'));
+      const result = await response.json() as { data: { user: import('./auth').AuthUser } };
+      acceptVerifiedSession(result.data.user);
       setStatus('verified');
-      setMessage('Your email is verified. You can now sign in.');
-      navigate('/verify-email?verified=1', { replace: true });
+      setMessage('Your email is verified. Let’s finish setting up your account.');
+      navigate('/onboarding', { replace: true });
     }).catch((verificationError: unknown) => {
       setStatus('invalid');
       setMessage(verificationError instanceof Error ? verificationError.message : 'This verification link could not be used.');
       navigate('/verify-email', { replace: true });
     });
-  }, [navigate, token]);
+  }, [acceptVerifiedSession, navigate, token]);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -227,7 +195,7 @@ export function VerifyEmailPage() {
   }
 
   if (status === 'checking') return <AuthFrame eyebrow="VERIFY YOUR EMAIL" title="Checking your link" description="We’re confirming your email address."><p className="auth-status" role="status">Please wait…</p></AuthFrame>;
-  if (status === 'verified' || new URLSearchParams(location.search).has('verified')) return <AuthFrame eyebrow="EMAIL VERIFIED" title="You’re ready to sign in" description="Your email address has been verified. Sign in to access your account."><Link className="button button-purple auth-submit" to="/login">Go to sign in</Link></AuthFrame>;
+  if (status === 'verified' || new URLSearchParams(location.search).has('verified')) return <AuthFrame eyebrow="EMAIL VERIFIED" title="Email verified" description="Your email address has been verified. Continue to complete your account setup."><Link className="button button-purple auth-submit" to="/onboarding">Continue setup</Link></AuthFrame>;
 
   const verificationDescription = emailWasSent && email
     ? `We sent a verification link to ${email}. The link expires in 30 minutes. If it doesn't arrive, check spam or request another link.`

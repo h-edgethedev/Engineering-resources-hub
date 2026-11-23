@@ -136,3 +136,17 @@ The API auth and moderation flows and local upload workflow have already been im
 - Updated `listResources` so Super Administrators bypass the ordinary visibility `OR` filter while retaining requested status, search, and review-queue conditions.
 - Verified the service query returned all seven pending resources, including the Week 4 upload. Reloaded `/app/admin/resources` in Safari and confirmed the Week 4 card is visible with Approve/Reject controls. No moderation decision was submitted.
 - `npm run typecheck` and `git diff --check` passed. API test suite was not run.
+
+## Account dashboard and upload separation (2026-11-23)
+
+- Reworked `/account` into a dashboard showing core account identity/roles, profile and academic details, learning preferences, and uploaded resources with status filters and pagination.
+- Moved resource submission to `/app/resources/new`, linked from the account dashboard for Student, Contributor, and Super Administrator accounts.
+- Added authenticated `mine=true` filtering to `GET /api/v1/resources` so the account page loads only the current user's uploads, including all moderation statuses.
+- Regenerated the ignored Prisma Client for this checkout, then `npm run typecheck`, the web production build, and `git diff --check` passed. No schema change or migration was needed.
+
+## Verified signup onboarding and Electrical programme levels (2026-11-23)
+
+- Email verification now creates the signed-in session and directs the verified user to onboarding. Existing verified accounts missing a username are directed to onboarding after login; accounts with a username follow their requested destination.
+- A unique username is now required by the profile API and to finish onboarding. Academic affiliation and learning preferences remain optional, and users may still edit their profile from the account page.
+- Extended both seeded programmes to include 100, 200, and 300 Level and semester structure. Added the Electrical and Electronics Engineering programme named Bachelor of Science in Electrical and Electronics Engineering. No Electrical course records were created because those still require owner validation.
+- Seed changes have not been applied to PostgreSQL in this checkout. Run the normal database seed after the configured database is available. Typecheck/build verification is pending.

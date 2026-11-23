@@ -20,6 +20,10 @@ const levelBySession = {
   '2024/2025': { code: '100', label: '100 Level', ordinal: 1 },
   '2025/2026': { code: '200', label: '200 Level', ordinal: 2 },
 } as const;
+const programmeLevelDefinitions = [
+  ...Object.values(levelBySession),
+  { code: '300', label: '300 Level', ordinal: 3 },
+];
 
 const semesterByName = {
   First: { code: 'first', label: 'First Semester', ordinal: 1 },
@@ -191,7 +195,7 @@ async function main() {
   });
 
   const levels = new Map<string, { id: string; code: string }>();
-  for (const level of Object.values(levelBySession)) {
+  for (const level of programmeLevelDefinitions) {
     const savedLevel = await prisma.programmeLevel.upsert({
       where: { programmeId_code: { programmeId: programme.id, code: level.code } },
       update: { label: level.label, ordinal: level.ordinal },
@@ -230,6 +234,38 @@ async function main() {
       update: {},
       create: { programmeId: programme.id, academicSessionId: session.id },
     });
+  }
+
+  const electricalDepartment = departmentBySlug.get('electrical-and-electronics-engineering');
+  if (!electricalDepartment) throw new Error('Electrical and Electronics Engineering department was not seeded.');
+  const electricalProgramme = await prisma.programme.upsert({
+    where: {
+      departmentId_slug: {
+        departmentId: electricalDepartment.id,
+        slug: 'bachelor-of-science-in-electrical-and-electronics-engineering',
+      },
+    },
+    update: { name: 'Bachelor of Science in Electrical and Electronics Engineering', award: 'Bachelor of Science' },
+    create: {
+      departmentId: electricalDepartment.id,
+      name: 'Bachelor of Science in Electrical and Electronics Engineering',
+      slug: 'bachelor-of-science-in-electrical-and-electronics-engineering',
+      award: 'Bachelor of Science',
+    },
+  });
+  for (const level of programmeLevelDefinitions) {
+    const savedLevel = await prisma.programmeLevel.upsert({
+      where: { programmeId_code: { programmeId: electricalProgramme.id, code: level.code } },
+      update: { label: level.label, ordinal: level.ordinal },
+      create: { ...level, programmeId: electricalProgramme.id },
+    });
+    for (const semester of Object.values(semesterByName)) {
+      await prisma.semester.upsert({
+        where: { programmeLevelId_code: { programmeLevelId: savedLevel.id, code: semester.code } },
+        update: { label: semester.label, ordinal: semester.ordinal },
+        create: { ...semester, programmeLevelId: savedLevel.id },
+      });
+    }
   }
 
   const coursesByCode = new Map<string, { title: string; creditUnits: number }>();

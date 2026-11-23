@@ -216,10 +216,6 @@ export function AcademicOnboarding() {
     return Object.fromEntries(Object.entries(value).map(([key, fieldValue]) => [key, typeof fieldValue === 'string' && fieldValue.trim() === '' ? null : typeof fieldValue === 'string' ? fieldValue.trim() : fieldValue])) as UserProfileFields;
   }
 
-  function persistUserProfile(next: UserProfileFields) {
-    void enqueueSave(async () => { await putAuth('/me/profile', normalizedUserProfile(next), 'Could not save your profile.'); }, 'Could not save your profile.').catch(() => undefined);
-  }
-
   function updateUserProfile(field: keyof UserProfileFields, value: string) {
     setUserProfile((current) => ({ ...current, [field]: value || null }));
   }
@@ -267,9 +263,15 @@ export function AcademicOnboarding() {
 
   async function finishUserProfile() {
     setSaveError('');
+    const username = userProfile.username?.trim().toLowerCase() ?? '';
+    if (!/^[a-z0-9_]{3,30}$/.test(username)) {
+      setSaveError('Choose a username with 3–30 letters, numbers, or underscores.');
+      setStep(4);
+      return;
+    }
     setFinishing(true);
     try {
-      await enqueueSave(async () => { await putAuth('/me/profile', normalizedUserProfile(userProfile), 'Could not save your profile.'); }, 'Could not save your profile.');
+      await enqueueSave(async () => { await putAuth('/me/profile', normalizedUserProfile({ ...userProfile, username }), 'Could not save your profile.'); }, 'Could not save your profile.');
       navigate('/account');
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : 'Could not save your profile.');
@@ -294,12 +296,12 @@ export function AcademicOnboarding() {
 
   return (
     <div className="site-shell">
-      <header className="site-header"><div className="header-inner"><Link className="brand" to="/" aria-label="Engineering Resources Hub home"><img className="brand-logo" src="/engineering-resources-hub-logo.png" alt="Engineering Resources Hub" width="1200" height="380" /></Link><Link className="text-link" to="/account">Skip onboarding</Link></div></header>
+      <header className="site-header"><div className="header-inner"><Link className="brand" to="/" aria-label="Engineering Resources Hub home"><img className="brand-logo" src="/engineering-resources-hub-logo.png" alt="Engineering Resources Hub" width="1200" height="380" /></Link></div></header>
       <main className="onboarding-page">
         <section className="onboarding-card" aria-labelledby="onboarding-title">
           <p className="eyebrow">PERSONALIZE YOUR EXPERIENCE</p>
           <h1 id="onboarding-title">Complete your EngHub profile</h1>
-          <p className="auth-description">Help EngHub connect you with courses and resources for your studies. You can skip this now and update it later.</p>
+          <p className="auth-description">Set up your account after verifying your email. Academic details and learning preferences are optional; a username is required.</p>
           <ol className="onboarding-stepper" aria-label="Onboarding progress">
             <li aria-current={step === 1 ? 'step' : undefined} className={step === 1 ? 'is-current' : 'is-complete'}><span>1</span><div><strong>Your institution</strong><small>Optional</small></div></li>
             <li aria-current={step === 2 ? 'step' : undefined} className={step === 2 ? 'is-current' : step > 2 ? 'is-complete' : ''}><span>2</span><div><strong>Academic progress</strong><small>Optional</small></div></li>
@@ -340,15 +342,15 @@ export function AcademicOnboarding() {
             </div>
             <div className="onboarding-actions"><button className="button button-outline" type="button" onClick={() => setStep(2)}>Back</button><button className="button button-outline" type="button" onClick={() => void continuePreferences()} disabled={finishing}>{finishing ? 'Saving…' : 'Skip this step'}</button><button className="button button-purple" type="button" onClick={() => void continuePreferences()} disabled={finishing}>{finishing ? 'Saving…' : 'Continue'}</button></div>
           </> : <>
-            <p className="onboarding-step-intro">Add a username and a few profile details if you’d like. Social links and avatar are optional.</p>
+            <p className="onboarding-step-intro">Choose a username to finish creating your account. Social links and avatar are optional.</p>
             <div className="onboarding-fields">
-              <label>Username <span className="optional-label">(optional)</span><input value={userProfile.username ?? ''} maxLength={30} autoComplete="username" onChange={(event) => updateUserProfile('username', event.target.value)} onBlur={() => persistUserProfile(userProfile)} placeholder="your_username" /></label>
-              <label>Avatar image URL <span className="optional-label">(optional)</span><input type="url" value={userProfile.avatarUrl ?? ''} onChange={(event) => updateUserProfile('avatarUrl', event.target.value)} onBlur={() => persistUserProfile(userProfile)} placeholder="https://…" /></label>
-              <label className="onboarding-bio-field">Short bio <span className="optional-label">(optional)</span><textarea value={userProfile.bio ?? ''} maxLength={280} onChange={(event) => updateUserProfile('bio', event.target.value)} onBlur={() => persistUserProfile(userProfile)} rows={4} placeholder="A little about what you’re learning" /><small>{(userProfile.bio ?? '').length}/280</small></label>
-              <label>GitHub profile URL <span className="optional-label">(optional)</span><input type="url" value={userProfile.githubUrl ?? ''} onChange={(event) => updateUserProfile('githubUrl', event.target.value)} onBlur={() => persistUserProfile(userProfile)} placeholder="https://github.com/username" /></label>
-              <label>LinkedIn profile URL <span className="optional-label">(optional)</span><input type="url" value={userProfile.linkedInUrl ?? ''} onChange={(event) => updateUserProfile('linkedInUrl', event.target.value)} onBlur={() => persistUserProfile(userProfile)} placeholder="https://www.linkedin.com/in/username" /></label>
+              <label>Username <span className="required-label">(required)</span><input value={userProfile.username ?? ''} minLength={3} maxLength={30} pattern="[A-Za-z0-9_]{3,30}" autoComplete="username" required onChange={(event) => updateUserProfile('username', event.target.value)} placeholder="your_username" /><small>3–30 letters, numbers, or underscores</small></label>
+              <label>Avatar image URL <span className="optional-label">(optional)</span><input type="url" value={userProfile.avatarUrl ?? ''} onChange={(event) => updateUserProfile('avatarUrl', event.target.value)} placeholder="https://…" /></label>
+              <label className="onboarding-bio-field">Short bio <span className="optional-label">(optional)</span><textarea value={userProfile.bio ?? ''} maxLength={280} onChange={(event) => updateUserProfile('bio', event.target.value)} rows={4} placeholder="A little about what you’re learning" /><small>{(userProfile.bio ?? '').length}/280</small></label>
+              <label>GitHub profile URL <span className="optional-label">(optional)</span><input type="url" value={userProfile.githubUrl ?? ''} onChange={(event) => updateUserProfile('githubUrl', event.target.value)} placeholder="https://github.com/username" /></label>
+              <label>LinkedIn profile URL <span className="optional-label">(optional)</span><input type="url" value={userProfile.linkedInUrl ?? ''} onChange={(event) => updateUserProfile('linkedInUrl', event.target.value)} placeholder="https://www.linkedin.com/in/username" /></label>
             </div>
-            <div className="onboarding-actions"><button className="button button-outline" type="button" onClick={() => setStep(3)}>Back</button><button className="button button-outline" type="button" onClick={() => navigate('/account')}>Skip profile</button><button className="button button-purple" type="button" onClick={() => void finishUserProfile()} disabled={finishing}>{finishing ? 'Saving…' : 'Save and finish'}</button></div>
+            <div className="onboarding-actions"><button className="button button-outline" type="button" onClick={() => setStep(3)}>Back</button><button className="button button-purple" type="button" onClick={() => void finishUserProfile()} disabled={finishing}>{finishing ? 'Saving…' : 'Save and finish'}</button></div>
           </>}
           <p className="onboarding-privacy">Your academic profile is optional. Public resource browsing does not require onboarding.</p>
         </section>

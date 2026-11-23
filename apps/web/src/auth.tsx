@@ -25,6 +25,7 @@ interface AuthContextValue {
   error: Error | null;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (displayName: string, email: string, password: string) => Promise<void>;
+  acceptVerifiedSession: (user: AuthUser) => void;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
 }
@@ -89,6 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signUp: async (displayName, email, password) => {
       await requestRegistration({ displayName, email, password });
     },
+    acceptVerifiedSession: (user) => { queryClient.setQueryData(authQueryKey, user); },
     signOut: async () => {
       const csrfResponse = await fetch('/api/v1/auth/csrf', { credentials: 'include' });
       if (!csrfResponse.ok) throw new Error(await readError(csrfResponse, 'Could not prepare a secure sign-out request.'));

@@ -1,5 +1,6 @@
 import type { RequestHandler } from 'express';
 import { ApiError } from '../../errors/ApiError.js';
+import { prisma } from '../../infrastructure/database.js';
 import { createSession, findLoginUser, register, revokeSession, rotateCsrfToken, sessionLifetimeMs } from './auth.service.js';
 import { clearSessionCookies, makeCsrfCookie, makeSessionCookies } from './auth.middleware.js';
 import { loginSchema, registerSchema, resendVerificationSchema, verifyEmailSchema } from './auth.schemas.js';
@@ -31,8 +32,14 @@ export const verifyEmailController: RequestHandler = async (request, response, n
   try {
     const parsed = verifyEmailSchema.safeParse(request.body);
     if (!parsed.success) throw validationError(parsed.error.issues);
-    await verifyEmailAddress(parsed.data.token);
-    response.json({ data: { verified: true } });
+    const userId = await verifyEmailAddress(parsed.data.token);
+    const user = await prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { id: true, email: true, displayName: true, status: true, roleAssignments: { select: { id: true, role: true, universityId: true, scopeKey: true } } },
+    });
+    const session = await createSession(userId);
+    response.append('Set-Cookie', makeSessionCookies(session.token, session.csrfToken, Math.floor(sessionLifetimeMs / 1000)));
+    response.json({ data: { verified: true, user, csrfToken: session.csrfToken } });
   } catch (error) { next(error); }
 };
 
