@@ -28,16 +28,17 @@ function hasRole(user: ReturnType<typeof useAuth>['user'], role: string) {
   return Boolean(user?.roleAssignments.some((assignment) => assignment.role === role));
 }
 
-function WorkspaceNav({ active }: { active: 'resources' | 'users' | 'queue' }) {
+function WorkspaceNav({ active }: { active: 'resources' | 'users' | 'queue' | 'governance' }) {
   const { user } = useAuth();
   return <div className="operations-heading"><div><p className="eyebrow">ENGHUB OPERATIONS</p><nav className="operations-nav" aria-label="Operations navigation">
     {(hasRole(user, 'SUPER_ADMIN') || hasRole(user, 'UNIVERSITY_ADMIN')) && <Link className={active === 'resources' ? 'is-active' : ''} to="/app/admin/resources">Resource review</Link>}
     {hasRole(user, 'SUPER_ADMIN') && <Link className={active === 'users' ? 'is-active' : ''} to="/app/admin/users">Users & roles</Link>}
     {(hasRole(user, 'MODERATOR') || hasRole(user, 'SUPER_ADMIN')) && <Link className={active === 'queue' ? 'is-active' : ''} to="/app/moderation/queue">Review queue</Link>}
+    {(hasRole(user, 'MODERATOR') || hasRole(user, 'SUPER_ADMIN')) && <Link className={active === 'governance' ? 'is-active' : ''} to="/app/governance/resources">Resource governance</Link>}
   </nav></div><Link className="text-link" to="/account">My account</Link></div>;
 }
 
-function RequireWorkspace({ roles, children }: { roles: string[]; children: ReactNode }) {
+export function RequireWorkspace({ roles, children }: { roles: string[]; children: ReactNode }) {
   const { user, isLoading, error } = useAuth();
   const location = useLocation();
   if (isLoading) return <main className="admin-page"><p className="discovery-state" role="status">Checking access…</p></main>;
@@ -84,7 +85,7 @@ function ResourceQueue({ adminView }: { adminView: boolean }) {
     {resourcesQuery.isPending && <p className="discovery-state" role="status">Loading submissions…</p>}
     {resourcesQuery.isError && <div className="catalog-message catalog-error" role="alert">{resourcesQuery.error.message}<button onClick={() => void resourcesQuery.refetch()}>Try again</button></div>}
     {resourcesQuery.isSuccess && resources.length === 0 && <p className="discovery-state">{status === 'PENDING' ? 'There are no resources waiting for review.' : `There are no ${status.toLowerCase()} resources in this view.`}</p>}
-    <div className="admin-resource-list">{resources.map((resource) => <ResourceReviewCard key={resource.id} resource={resource} canDecide={canDecide && status === 'PENDING' && resource.uploadedById !== user?.id} onDecide={decide} />)}</div>
+    <div className="admin-resource-list">{resources.map((resource) => <ResourceReviewCard key={resource.id} resource={resource} canDecide={status === 'PENDING' && (hasRole(user, 'SUPER_ADMIN') || (canDecide && resource.uploadedById !== user?.id))} onDecide={decide} />)}</div>
     {resourcesQuery.data?.meta && <div className="admin-paging"><span>{resourcesQuery.data.meta.total} resources · page {page} of {Math.max(1, resourcesQuery.data.meta.totalPages)}</span><div><button disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>Previous</button><button disabled={page >= resourcesQuery.data.meta.totalPages} onClick={() => setPage((current) => current + 1)}>Next</button></div></div>}
   </main></div>;
 }

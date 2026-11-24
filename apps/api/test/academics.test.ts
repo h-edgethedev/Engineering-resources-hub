@@ -71,6 +71,7 @@ describe('academic endpoints', () => {
   });
 
   it('fetches a department and its programmes', async () => {
+    db.department.findFirst.mockResolvedValueOnce({ id: 'd1', name: 'Computer Engineering', slug: department, faculty: { name: 'Faculty of Engineering', slug: faculty }, programmes: [] });
     const departmentResponse = await request(`/api/v1/universities/${uni}/faculties/${faculty}/departments/${department}`);
     expect(departmentResponse.status).toBe(200);
     const programmesResponse = await request(`/api/v1/universities/${uni}/faculties/${faculty}/departments/${department}/programmes`);
@@ -90,8 +91,9 @@ describe('academic endpoints', () => {
     const response = await request(`/api/v1/courses?university=${uni}&department=${department}&level=100&page=2&pageSize=5`);
     expect(response.status).toBe(200);
     const where = db.course.findMany.mock.calls[0][0].where;
-    expect(where.programme.department.slug).toBe(department);
     expect(where.programme.department.faculty.university).toMatchObject({ slug: uni });
+    expect(where.OR).toContainEqual({ programme: { department: { slug: department } } });
+    expect(where.OR).toContainEqual({ code: { contains: 'GET', mode: 'insensitive' } });
     expect(where.offerings.some.AND).toContainEqual({ semester: { programmeLevel: { code: '100' } } });
     expect(db.course.findMany.mock.calls[0][0]).toMatchObject({ skip: 5, take: 5 });
   });

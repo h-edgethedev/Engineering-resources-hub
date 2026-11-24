@@ -8,11 +8,16 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 
 const db = vi.hoisted(() => ({
-  resource: { count: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
+  resource: { count: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn(), delete: vi.fn(), deleteMany: vi.fn() },
   course: { findFirst: vi.fn() },
   courseOffering: { findFirst: vi.fn() },
   authSession: { findUnique: vi.fn(), update: vi.fn() },
-  moderationAction: { create: vi.fn() },
+  moderationAction: { create: vi.fn(), findMany: vi.fn() },
+  resourceGovernanceEvent: { create: vi.fn(), findMany: vi.fn() },
+  deletionRequest: { findFirst: vi.fn(), create: vi.fn(), findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), findMany: vi.fn(), count: vi.fn(), updateMany: vi.fn() },
+  resourcePurgeJob: { upsert: vi.fn(), findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), findMany: vi.fn(), updateMany: vi.fn(), update: vi.fn() },
+  resourceReport: { create: vi.fn(), count: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn(), findUniqueOrThrow: vi.fn() },
+  user: { findMany: vi.fn() },
   $transaction: vi.fn(),
 }));
 
@@ -34,6 +39,7 @@ const sessionId = 'd9428888-122b-11e1-b85c-61cd3cbb3212';
 const semesterId = 'd9428888-122b-11e1-b85c-61cd3cbb3213';
 const userId = 'd9428888-122b-11e1-b85c-61cd3cbb3214';
 const universityId = 'd9428888-122b-11e1-b85c-61cd3cbb3215';
+const deletionRequestId = 'd9428888-122b-11e1-b85c-61cd3cbb3216';
 const sessionToken = 'test-session-token';
 const csrfToken = 'test-csrf-token';
 const csrfTokenHash = createHash('sha256').update(csrfToken).digest('hex');
@@ -47,6 +53,8 @@ const resource = {
   type: 'LECTURE_NOTE',
   status: 'PENDING',
   uploadedById: userId,
+  trashedAt: null,
+  quarantinedAt: null,
   course: { id: courseId, code: 'CPE 101', title: 'Introduction to Computing' },
   academicSession: { id: sessionId, label: '2025/2026' },
   semester: { id: semesterId, code: 'first', label: 'First Semester', programmeLevel: { code: '100', label: '100 Level' } },
@@ -115,7 +123,33 @@ beforeEach(() => {
   });
   db.resource.create.mockResolvedValue(resource);
   db.resource.update.mockResolvedValue({ ...resource, title: 'Updated title' });
+  db.resource.updateMany.mockResolvedValue({ count: 1 });
+  db.resource.findUniqueOrThrow.mockResolvedValue(resource);
+  db.resource.deleteMany.mockResolvedValue({ count: 1 });
   db.moderationAction.create.mockResolvedValue({ id: 'action-1' });
+  db.moderationAction.findMany.mockResolvedValue([]);
+  db.resourceGovernanceEvent.create.mockResolvedValue({ id: 'event-1' });
+  db.resourceGovernanceEvent.findMany.mockResolvedValue([]);
+  db.deletionRequest.findFirst.mockResolvedValue(null);
+  db.deletionRequest.create.mockResolvedValue({ id: 'request-1', resourceId, status: 'PENDING' });
+  db.deletionRequest.findUnique.mockResolvedValue(null);
+  db.deletionRequest.findUniqueOrThrow.mockResolvedValue({ id: 'request-1', status: 'PENDING' });
+  db.deletionRequest.findMany.mockResolvedValue([]);
+  db.deletionRequest.count.mockResolvedValue(0);
+  db.deletionRequest.updateMany.mockResolvedValue({ count: 1 });
+  db.resourcePurgeJob.upsert.mockResolvedValue({ id: 'purge-1', status: 'PENDING' });
+  db.resourcePurgeJob.findUnique.mockResolvedValue(null);
+  db.resourcePurgeJob.findUniqueOrThrow.mockResolvedValue({ id: 'purge-1', status: 'PENDING' });
+  db.resourcePurgeJob.findMany.mockResolvedValue([]);
+  db.resourcePurgeJob.updateMany.mockResolvedValue({ count: 1 });
+  db.resourcePurgeJob.update.mockResolvedValue({ id: 'purge-1', status: 'COMPLETE' });
+  db.resourceReport.create.mockResolvedValue({ id: 'report-1', resourceId, status: 'OPEN' });
+  db.resourceReport.count.mockResolvedValue(0);
+  db.resourceReport.findMany.mockResolvedValue([]);
+  db.resourceReport.findUnique.mockResolvedValue(null);
+  db.resourceReport.updateMany.mockResolvedValue({ count: 1 });
+  db.resourceReport.findUniqueOrThrow.mockResolvedValue({ id: 'report-1', status: 'RESOLVED' });
+  db.user.findMany.mockResolvedValue([]);
   db.$transaction.mockImplementation((callback) => callback(db));
   storage.put.mockResolvedValue({ storageKey: 'generated/resource.pdf' });
   db.course.findFirst.mockResolvedValue({ id: courseId });
@@ -145,7 +179,7 @@ describe('resource management endpoints', () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ data: [{ id: resourceId }], meta: { page: 2, pageSize: 5, total: 1 } });
     expect(db.resource.findMany.mock.calls[0][0]).toMatchObject({
-      where: { courseId, type: 'LECTURE_NOTE', AND: [{ OR: [{ status: 'APPROVED' }, { uploadedById: userId }] }] },
+      where: { courseId, type: 'LECTURE_NOTE', status: 'APPROVED', AND: [{ OR: [{ status: 'APPROVED' }, { uploadedById: userId }] }, { trashedAt: null }, { quarantinedAt: null }] },
       skip: 5,
       take: 5,
     });
@@ -192,12 +226,18 @@ describe('resource management endpoints', () => {
     expect(db.resource.update.mock.calls[0][0].data).toMatchObject({ title: 'Updated title' });
   });
 
-  it('deletes a resource and returns 204', async () => {
-    const response = await request(`/api/v1/resources/${resourceId}`, { method: 'DELETE' });
-    expect(response.status).toBe(204);
-    expect(await response.text()).toBe('');
-    expect(db.resource.update.mock.calls[0][0].data.status).toBe('REMOVED');
-    expect(db.moderationAction.create).toHaveBeenCalledWith({ data: { resourceId, actorId: userId, action: 'REMOVED' } });
+  it('requires Super Admin authority and a reason to move a resource into Trash', async () => {
+    const denied = await request(`/api/v1/resources/${resourceId}`, { ...json({ reason: 'Duplicate material' }), method: 'DELETE' });
+    expect(denied.status).toBe(403);
+    db.authSession.findUnique.mockResolvedValueOnce({
+      id: 'test-session-id', csrfTokenHash, expiresAt: new Date(Date.now() + 60_000), revokedAt: null,
+      user: { id: userId, email: 'admin@example.test', displayName: 'Admin', status: 'ACTIVE', emailVerifiedAt: new Date(), roleAssignments: [{ id: 'admin-role', role: 'SUPER_ADMIN', universityId: null, scopeKey: 'global' }] },
+    });
+    db.resource.findUnique.mockResolvedValueOnce({ ...resource, quarantinedAt: new Date(), quarantineReason: 'Urgent safety review' });
+    const response = await request(`/api/v1/resources/${resourceId}`, { ...json({ reason: 'Duplicate material' }), method: 'DELETE' });
+    expect(response.status).toBe(200);
+    expect(db.resource.update.mock.calls[0][0].data).toMatchObject({ trashMethod: 'SUPER_ADMIN_DIRECT', trashReason: 'Duplicate material', statusBeforeTrash: 'PENDING', quarantinedAt: null, quarantinedById: null, quarantineReason: null });
+    expect(storage.delete).not.toHaveBeenCalled();
   });
 
   it('returns 400 for malformed IDs and invalid resource data', async () => {
@@ -248,6 +288,8 @@ describe('resource management endpoints', () => {
     expect(response.status).toBe(200);
     expect(db.resource.findMany.mock.calls[0][0].where.AND).toEqual([
       { OR: [{ status: 'APPROVED' }] },
+      { trashedAt: null },
+      { quarantinedAt: null },
       { status: 'PENDING' },
     ]);
   });
@@ -285,7 +327,90 @@ describe('resource management endpoints', () => {
     });
     const response = await request(`/api/v1/resources/${resourceId}/moderation`, json({ action: 'APPROVED' }));
     expect(response.status).toBe(200);
-    expect(db.resource.update.mock.calls[0][0].data.status).toBe('APPROVED');
-    expect(db.moderationAction.create).toHaveBeenCalledWith({ data: { resourceId, actorId: '941e3fa0-122b-11e1-b85c-61cd3cbb3218', action: 'APPROVED', reason: undefined } });
+    expect(db.resource.updateMany.mock.calls[0][0].data.status).toBe('APPROVED');
+    expect(db.moderationAction.create).toHaveBeenCalledWith({ data: { resourceId, resourceIdSnapshot: resourceId, actorId: '941e3fa0-122b-11e1-b85c-61cd3cbb3218', action: 'APPROVED', reason: undefined } });
+  });
+
+  it('allows a Super Admin to approve their own resource and records the decision', async () => {
+    db.authSession.findUnique.mockResolvedValueOnce({
+      id: 'test-session-id', csrfTokenHash, expiresAt: new Date(Date.now() + 60_000), revokedAt: null,
+      user: { id: userId, email: 'admin@example.test', displayName: 'Admin', status: 'ACTIVE', emailVerifiedAt: new Date(), roleAssignments: [{ id: 'admin-role', role: 'SUPER_ADMIN', universityId: null, scopeKey: 'global' }] },
+    });
+    const response = await request(`/api/v1/resources/${resourceId}/moderation`, json({ action: 'APPROVED' }));
+    expect(response.status).toBe(200);
+    expect(db.resource.updateMany.mock.calls[0][0].data.status).toBe('APPROVED');
+    expect(db.resourceGovernanceEvent.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: 'MODERATION_APPROVED', actorRole: 'SUPER_ADMIN' }) });
+  });
+
+  it('lets an in-scope moderator submit a deletion request without removing the resource', async () => {
+    const moderatorId = '941e3fa0-122b-11e1-b85c-61cd3cbb3218';
+    db.authSession.findUnique.mockResolvedValueOnce({
+      id: 'test-session-id', csrfTokenHash, expiresAt: new Date(Date.now() + 60_000), revokedAt: null,
+      user: { id: moderatorId, email: 'moderator@example.test', displayName: 'Moderator', status: 'ACTIVE', emailVerifiedAt: new Date(), roleAssignments: [{ id: 'moderator-role', role: 'MODERATOR', universityId, scopeKey: `university:${universityId}` }] },
+    });
+    const response = await request(`/api/v1/resources/${resourceId}/deletion-requests`, json({ category: 'DUPLICATE', explanation: 'This exact material is already listed.' }));
+    expect(response.status).toBe(201);
+    expect(db.deletionRequest.create).toHaveBeenCalledWith({ data: expect.objectContaining({ resourceId, requestedById: moderatorId, category: 'DUPLICATE' }) });
+    expect(db.resource.update).not.toHaveBeenCalled();
+    expect(storage.delete).not.toHaveBeenCalled();
+  });
+
+  it('allows a Super Admin to approve their own deletion request and moves the resource to Trash', async () => {
+    const requestRecord = { id: deletionRequestId, resourceId, resourceIdSnapshot: resourceId, requestedById: userId, requestedByRole: 'SUPER_ADMIN', category: 'DUPLICATE', explanation: 'Duplicate record.', status: 'PENDING', resource: { ...resource, status: 'APPROVED', trashedAt: null, file: resource.file } };
+    db.authSession.findUnique.mockResolvedValueOnce({
+      id: 'test-session-id', csrfTokenHash, expiresAt: new Date(Date.now() + 60_000), revokedAt: null,
+      user: { id: userId, email: 'admin@example.test', displayName: 'Admin', status: 'ACTIVE', emailVerifiedAt: new Date(), roleAssignments: [{ id: 'admin-role', role: 'SUPER_ADMIN', universityId: null, scopeKey: 'global' }] },
+    });
+    db.deletionRequest.findUnique.mockResolvedValueOnce(requestRecord);
+    db.deletionRequest.findUniqueOrThrow.mockResolvedValueOnce({ ...requestRecord, status: 'APPROVED' });
+    const response = await request(`/api/v1/resources/governance/deletion-requests/${deletionRequestId}/decision`, json({ action: 'APPROVE' }));
+    expect(response.status).toBe(200);
+    expect(db.deletionRequest.updateMany.mock.calls[0][0].data).toMatchObject({ status: 'APPROVED', decidedById: userId });
+    expect(db.resource.update.mock.calls[0][0].data).toMatchObject({ statusBeforeTrash: 'APPROVED', trashMethod: 'APPROVED_REQUEST', trashReason: 'Duplicate record.' });
+  });
+
+  it('denies moderators the ability to decide deletion requests', async () => {
+    db.authSession.findUnique.mockResolvedValueOnce({
+      id: 'test-session-id', csrfTokenHash, expiresAt: new Date(Date.now() + 60_000), revokedAt: null,
+      user: { id: '941e3fa0-122b-11e1-b85c-61cd3cbb3218', email: 'moderator@example.test', displayName: 'Moderator', status: 'ACTIVE', emailVerifiedAt: new Date(), roleAssignments: [{ id: 'moderator-role', role: 'MODERATOR', universityId, scopeKey: `university:${universityId}` }] },
+    });
+    const response = await request(`/api/v1/resources/governance/deletion-requests/${deletionRequestId}/decision`, json({ action: 'APPROVE' }));
+    expect(response.status).toBe(403);
+  });
+
+  it('accepts a unique authenticated report for a published resource', async () => {
+    const reporterId = '941e3fa0-122b-11e1-b85c-61cd3cbb3218';
+    db.authSession.findUnique.mockResolvedValueOnce({
+      id: 'test-session-id', csrfTokenHash, expiresAt: new Date(Date.now() + 60_000), revokedAt: null,
+      user: { id: reporterId, email: 'reporter@example.test', displayName: 'Reporter', status: 'ACTIVE', emailVerifiedAt: new Date(), roleAssignments: [{ id: 'student-role', role: 'STUDENT', universityId: null, scopeKey: 'global' }] },
+    });
+    db.resource.findUnique.mockResolvedValueOnce({ ...resourceScope, status: 'APPROVED' });
+    const response = await request(`/api/v1/resources/${resourceId}/reports`, json({ category: 'WRONG_CONTENT', explanation: 'This material does not match the listed course.' }));
+    expect(response.status).toBe(201);
+    expect(db.resourceReport.create).toHaveBeenCalledWith({ data: expect.objectContaining({ resourceId, reporterId, category: 'WRONG_CONTENT' }) });
+  });
+
+  it('restores resources with their previous moderation status without deleting the stored file', async () => {
+    const moderatorId = '941e3fa0-122b-11e1-b85c-61cd3cbb3218';
+    db.authSession.findUnique.mockResolvedValueOnce({
+      id: 'test-session-id', csrfTokenHash, expiresAt: new Date(Date.now() + 60_000), revokedAt: null,
+      user: { id: moderatorId, email: 'moderator@example.test', displayName: 'Moderator', status: 'ACTIVE', emailVerifiedAt: new Date(), roleAssignments: [{ id: 'moderator-role', role: 'MODERATOR', universityId, scopeKey: `university:${universityId}` }] },
+    });
+    const trashed = { ...resource, status: 'PENDING', statusBeforeTrash: 'APPROVED', trashedAt: new Date(), trashGeneration: 'd9428888-122b-11e1-b85c-61cd3cbb3217', quarantinedAt: null };
+    db.resource.findUnique.mockResolvedValueOnce(trashed);
+    db.resource.findFirst.mockResolvedValueOnce(null);
+    storage.get.mockResolvedValueOnce(createReadStream(testFilePath));
+    const response = await request(`/api/v1/resources/${resourceId}/restore`, json({}));
+    expect(response.status).toBe(200);
+    expect(db.resource.updateMany.mock.calls[0][0].data).toMatchObject({ status: 'APPROVED', trashedAt: null, trashGeneration: null });
+    expect(storage.delete).not.toHaveBeenCalled();
+  });
+
+  it('returns actor display names and usernames in resource history', async () => {
+    db.resourceGovernanceEvent.findMany.mockResolvedValueOnce([{ id: 'event-1', resourceId, resourceIdSnapshot: resourceId, actorId: userId, actorRole: 'MODERATOR', action: 'METADATA_EDITED', fieldName: 'title', previousValue: 'Old title', newValue: 'New title', reason: null, createdAt: new Date() }]);
+    db.user.findMany.mockResolvedValueOnce([{ id: userId, displayName: 'Test Student', profile: { username: 'teststudent' } }]);
+    const response = await request(`/api/v1/resources/${resourceId}/history`);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ data: { events: [{ actorName: 'Test Student (@teststudent)' }] } });
   });
 });

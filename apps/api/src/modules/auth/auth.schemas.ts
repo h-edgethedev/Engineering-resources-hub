@@ -22,9 +22,9 @@ export const grantRoleSchema = z.object({
 }).strict();
 
 export const moderationSchema = z.object({
-  action: z.enum(['APPROVED', 'REJECTED', 'REMOVED']),
+  action: z.enum(['APPROVED', 'REJECTED']),
   reason: z.string().trim().min(1).max(2000).optional(),
-}).strict().refine((value) => value.action === 'APPROVED' || Boolean(value.reason), 'a reason is required for rejection or removal');
+}).strict().refine((value) => value.action === 'APPROVED' || Boolean(value.reason), 'a reason is required for rejection');
 
 export const userIdParamsSchema = z.object({ userId: z.uuid() });
 export const grantIdParamsSchema = z.object({ grantId: z.uuid() });

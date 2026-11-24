@@ -5,7 +5,8 @@ import { LoginPage, ProtectedAccount, ProtectedResourceSubmissionPage, RegisterP
 import { AcademicOnboarding } from './AcademicOnboarding';
 import { PublicHeader } from './PublicHeader';
 import { CourseDetailPage, ExplorePage, ResourceDetailPage, UniversitiesPage, UniversityDetailPage } from './DiscoveryPages';
-import { AdminResourcesPage, AdminUsersPage, ModerationQueuePage } from './AdminPages';
+import { AdminResourcesPage, AdminUsersPage, ModerationQueuePage, RequireWorkspace } from './AdminPages';
+import { ResourceGovernancePage } from './GovernancePages';
 import { useAuth } from './auth';
 
 interface Department {
@@ -305,6 +306,7 @@ function App() {
       <Route path="/app/admin/resources" element={<AdminResourcesPage />} />
       <Route path="/app/admin/users" element={<AdminUsersPage />} />
       <Route path="/app/moderation/queue" element={<ModerationQueuePage />} />
+      <Route path="/app/governance/resources" element={<RequireWorkspace roles={['SUPER_ADMIN', 'MODERATOR']}><ResourceGovernancePage /></RequireWorkspace>} />
       <Route path="/app/resources/new" element={<ProtectedResourceSubmissionPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />

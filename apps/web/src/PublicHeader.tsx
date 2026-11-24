@@ -46,6 +46,7 @@ export function PublicHeader() {
             <Link to="/universities" onClick={closeMenu}>Universities</Link>
             <Link to="/#about" onClick={closeMenu}>About</Link>
             {(isSuperAdmin || isUniversityAdmin) && <Link className="review-nav-link" to="/app/admin/resources" onClick={closeMenu}>Resource review{pendingCount > 0 && <span className="review-nav-count" aria-label={`${pendingCount} pending`}>{countLabel}</span>}</Link>}
+            {(isModerator || isSuperAdmin) && <Link to="/app/governance/resources" onClick={closeMenu}>Resource governance</Link>}
             {isSuperAdmin && <Link to="/app/admin/users" onClick={closeMenu}>Users & roles</Link>}
             {(isModerator || isSuperAdmin) && <Link className="review-nav-link" to="/app/moderation/queue" onClick={closeMenu}>Review queue{pendingCount > 0 && <span className="review-nav-count" aria-label={`${pendingCount} pending`}>{countLabel}</span>}</Link>}
             {user ? <Link to="/account" onClick={closeMenu}>My account</Link> : <Link to="/login" onClick={closeMenu}>Log in</Link>}

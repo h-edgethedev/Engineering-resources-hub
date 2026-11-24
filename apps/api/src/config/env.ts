@@ -18,6 +18,7 @@ const environmentSchema = z.object({
     }, 'must be a valid PostgreSQL connection URL'),
   RESOURCE_STORAGE_DIR: z.string().min(1).default(resolve(process.cwd(), '.data/uploads')),
   RESOURCE_MAX_FILE_SIZE_BYTES: z.coerce.number().int().min(1).max(100 * 1024 * 1024).default(20 * 1024 * 1024),
+  RESOURCE_PURGE_INTERVAL_MS: z.coerce.number().int().min(60_000).default(24 * 60 * 60 * 1000),
   EMAIL_SMTP_URL: z.string().url().refine((value) => {
     try { return ['smtp:', 'smtps:'].includes(new URL(value).protocol); }
     catch { return false; }
@@ -48,6 +49,7 @@ export const env = {
   databaseUrl: result.data.DATABASE_URL,
   resourceStorageDir: result.data.RESOURCE_STORAGE_DIR,
   resourceMaxFileSizeBytes: result.data.RESOURCE_MAX_FILE_SIZE_BYTES,
+  resourcePurgeIntervalMs: result.data.RESOURCE_PURGE_INTERVAL_MS,
   emailSmtpUrl: result.data.EMAIL_SMTP_URL,
   emailFrom: result.data.EMAIL_FROM,
 } as const;

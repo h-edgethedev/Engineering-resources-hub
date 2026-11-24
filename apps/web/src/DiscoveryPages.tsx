@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { PublicHeader } from './PublicHeader';
+import { useAuth } from './auth';
 
 interface Envelope<T> { data: T; meta?: { page: number; pageSize: number; total: number; totalPages: number }; }
 interface University { id: string; name: string; slug: string; countryCode: string; faculties?: Faculty[]; _count?: { faculties: number }; }
@@ -116,14 +117,32 @@ export function CourseDetailPage() {
 
 export function ResourceDetailPage() {
   const { resourceId = '' } = useParams();
+  const { user } = useAuth();
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportCategory, setReportCategory] = useState('WRONG_CONTENT');
+  const [reportExplanation, setReportExplanation] = useState('');
+  const [reportMessage, setReportMessage] = useState('');
+  const [reportError, setReportError] = useState('');
   const resourceQuery = useQuery({ queryKey: ['resource', resourceId], queryFn: async () => (await api<Resource>(`/resources/${resourceId}`)).data, enabled: Boolean(resourceId) });
   const resource = resourceQuery.data;
+  async function submitReport(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setReportError(''); setReportMessage('');
+    try {
+      const csrf = await fetch('/api/v1/auth/csrf', { credentials: 'include' });
+      if (!csrf.ok) throw new Error('Your sign-in session may have expired. Sign in again and retry.');
+      const csrfBody = await csrf.json() as { data: { csrfToken: string } };
+      const response = await fetch(`/api/v1/resources/${resourceId}/reports`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfBody.data.csrfToken }, body: JSON.stringify({ category: reportCategory, explanation: reportExplanation.trim() }) });
+      if (!response.ok) { const result = await response.json().catch(() => null) as { error?: { message?: string } } | null; throw new Error(result?.error?.message ?? 'Could not submit this report.'); }
+      setReportMessage('Report sent to the moderation team.'); setReportExplanation(''); setReportOpen(false);
+    } catch (error) { setReportError(error instanceof Error ? error.message : 'Could not submit this report.'); }
+  }
   return <div className="site-shell"><PublicHeader /><main className="discovery-page detail-page"><Link className="text-link" to="/explore">← Explore</Link>
     {resourceQuery.isPending && <p className="discovery-state" role="status">Loading resource…</p>}
     {resourceQuery.isError && <div className="catalog-message catalog-error" role="alert">{resourceQuery.error.message}</div>}
     {resource && <><p className="eyebrow">{formatResourceType(resource.type)} · {resource.status} RESOURCE</p><h1>{resource.title}</h1><p className="detail-course-code"><Link to={`/courses/${resource.course.id}`}>{resource.course.code} · {resource.course.title}</Link></p>{resource.description && <p className="detail-description">{resource.description}</p>}
       <dl className="resource-metadata"><div><dt>Academic session</dt><dd>{resource.academicSession?.label ?? 'Not specified'}</dd></div><div><dt>Level and semester</dt><dd>{resource.semester ? `${resource.semester.programmeLevel.label ?? `${resource.semester.programmeLevel.code} Level`} · ${resource.semester.label}` : 'Not specified'}</dd></div><div><dt>Shared by</dt><dd>{resource.uploader?.displayName ?? 'EngHub community'}<br /><span className="resource-uploader-tag">@{resource.uploader?.profile?.username ?? 'username unavailable'}</span></dd></div></dl>
       <div className="resource-actions"><a className="button button-purple" href={`/api/v1/resources/${resource.id}/file/download`}>Download file</a>{resource.file && <span>{resource.file.originalFilename} · {Math.max(1, Math.round(resource.file.byteSize / 1024))} KB</span>}</div>
+      {user && resource.status === 'APPROVED' && <section className="resource-report"><button type="button" className="text-link" onClick={() => setReportOpen((value) => !value)}>{reportOpen ? 'Close report form' : 'Report a problem with this resource'}</button>{reportMessage && <p role="status">{reportMessage}</p>}{reportOpen && <form className="governance-edit-form" onSubmit={(event) => void submitReport(event)}><label>Issue type<select value={reportCategory} onChange={(event) => setReportCategory(event.target.value)}><option value="BROKEN_FILE">File is broken or unreadable</option><option value="WRONG_CONTENT">Wrong course or content</option><option value="COPYRIGHT">Copyright concern</option><option value="PRIVACY">Privacy concern</option><option value="INAPPROPRIATE">Inappropriate content</option><option value="OTHER">Other</option></select></label><label>Details<textarea required minLength={1} maxLength={2000} rows={3} value={reportExplanation} onChange={(event) => setReportExplanation(event.target.value)} /></label>{reportError && <p className="auth-error" role="alert">{reportError}</p>}<button className="button button-purple" type="submit">Send report</button></form>}</section>}
       {resource.file?.mediaType === 'application/pdf' && <section className="resource-preview" aria-label="Document preview"><iframe title={`Preview of ${resource.title}`} src={`/api/v1/resources/${resource.id}/file`} /></section>}
       {resource.file?.mediaType === 'text/plain' && <section className="resource-preview"><iframe title={`Preview of ${resource.title}`} src={`/api/v1/resources/${resource.id}/file`} /></section>}
     </>}

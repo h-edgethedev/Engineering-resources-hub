@@ -10,7 +10,12 @@ import { hasRole, hasRoleInUniversity } from '../auth/auth.middleware.js';
 import type { AuthContext } from '../auth/auth.types.js';
 
 const resourceInclude = {
-  course: { select: { id: true, code: true, title: true } },
+  course: {
+    select: {
+      id: true, code: true, title: true,
+      programme: { select: { department: { select: { faculty: { select: { university: { select: { slug: true } } } } } } } },
+    },
+  },
   academicSession: { select: { id: true, label: true } },
   semester: { select: { id: true, code: true, label: true, programmeLevel: { select: { code: true, label: true } } } },
   file: { select: { id: true, provider: true, originalFilename: true, mediaType: true, byteSize: true } },
@@ -21,6 +26,8 @@ const scopeSelect = {
   id: true,
   status: true,
   uploadedById: true,
+  trashedAt: true,
+  quarantinedAt: true,
   course: { select: { programme: { select: { department: { select: { faculty: { select: { universityId: true } } } } } } } },
   file: { select: { provider: true, storageKey: true } },
 } as const;
@@ -28,20 +35,18 @@ const scopeSelect = {
 type ResourceScopeRecord = {
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'REMOVED';
   uploadedById: string | null;
+  trashedAt?: Date | null;
+  quarantinedAt?: Date | null;
   course: { programme: { department: { faculty: { universityId: string } } } };
 };
 
 function canViewResource(resource: ResourceScopeRecord, actor?: AuthContext) {
-  if (resource.status === 'APPROVED') return true;
+  if (resource.trashedAt || resource.status === 'REMOVED') return false;
+  const universityId = resource.course.programme.department.faculty.universityId;
+  if (resource.quarantinedAt && (!actor || (!hasRole(actor, 'SUPER_ADMIN') && !hasRoleInUniversity(actor, universityId, 'MODERATOR')))) return false;
+  if (resource.status === 'APPROVED' && !resource.quarantinedAt) return true;
   if (!actor) return false;
   if (resource.uploadedById === actor.user.id) return true;
-  const universityId = resource.course.programme.department.faculty.universityId;
-  return hasRole(actor, 'SUPER_ADMIN') || hasRoleInUniversity(actor, universityId, 'UNIVERSITY_ADMIN', 'MODERATOR');
-}
-
-function canManageResource(resource: ResourceScopeRecord, actor: AuthContext) {
-  if (resource.uploadedById === actor.user.id) return true;
-  const universityId = resource.course.programme.department.faculty.universityId;
   return hasRole(actor, 'SUPER_ADMIN') || hasRoleInUniversity(actor, universityId, 'UNIVERSITY_ADMIN', 'MODERATOR');
 }
 
@@ -99,6 +104,8 @@ export async function listResources(query: ListResourcesQuery, actor?: AuthConte
     ...((status || (!mine && !reviewQueue)) ? { status: status ?? 'APPROVED' as const } : {}),
     AND: [
       ...(!isSuperAdmin ? [{ OR: visibility }] : []),
+      { trashedAt: null },
+      { quarantinedAt: null },
       ...(mine && actor ? [{ uploadedById: actor.user.id }] : []),
       ...(reviewQueue ? [{ status: 'PENDING' as const }, { uploadedById: { not: actor?.user.id } }] : []),
       ...(!isSuperAdmin && status ? [{ status }] : []),
@@ -123,7 +130,7 @@ export async function findResourceById(resourceId: string, actor?: AuthContext) 
   return prisma.resource.findUnique({ where: { id: resourceId }, include: resourceInclude });
 }
 
-async function validateFileSignature(file: Express.Multer.File) {
+export async function validateFileSignature(file: Express.Multer.File) {
   if (file.size < 1) throw new ApiError(400, 'EMPTY_RESOURCE_FILE', 'The uploaded file is empty.');
   const handle = await open(file.path, 'r');
   try {
@@ -196,49 +203,30 @@ export async function updateResource(resourceId: string, input: UpdateResourceIn
       include: resourceInclude,
     });
     if (current.status === 'APPROVED' || current.status === 'REJECTED') {
-      await transaction.moderationAction.create({ data: { resourceId, actorId: actor.user.id, action: 'RESUBMITTED' } });
+      await transaction.moderationAction.create({ data: { resourceId, resourceIdSnapshot: resourceId, actorId: actor.user.id, action: 'RESUBMITTED' } });
     }
     return resource;
   });
 }
 
-export async function deleteResource(resourceId: string, actor: AuthContext) {
+export async function moderateResource(resourceId: string, action: 'APPROVED' | 'REJECTED', reason: string | undefined, actor: AuthContext) {
   const current = await findResourceScope(resourceId);
   if (!current) throw new ApiError(404, 'RESOURCE_NOT_FOUND', 'Resource was not found.');
-  if (!canManageResource(current as ResourceScopeRecord, actor)) throw new ApiError(403, 'RESOURCE_OWNERSHIP_REQUIRED', 'You cannot remove this resource.');
-  if (current.status === 'REMOVED') {
-    if (current.file?.provider === resourceStorage.provider) await resourceStorage.delete(current.file.storageKey);
-    return;
-  }
-  await prisma.$transaction(async (transaction) => {
-    await transaction.resource.update({ where: { id: resourceId }, data: { status: 'REMOVED' } });
-    await transaction.moderationAction.create({ data: { resourceId, actorId: actor.user.id, action: 'REMOVED' } });
-  });
-  if (current.file?.provider === resourceStorage.provider) await resourceStorage.delete(current.file.storageKey);
-}
-
-export async function moderateResource(resourceId: string, action: 'APPROVED' | 'REJECTED' | 'REMOVED', reason: string | undefined, actor: AuthContext) {
-  const current = await findResourceScope(resourceId);
-  if (!current) throw new ApiError(404, 'RESOURCE_NOT_FOUND', 'Resource was not found.');
-  if (current.uploadedById === actor.user.id) throw new ApiError(403, 'SELF_MODERATION_FORBIDDEN', 'You cannot moderate your own resource.');
+  if (current.uploadedById === actor.user.id && !hasRole(actor, 'SUPER_ADMIN')) throw new ApiError(403, 'SELF_MODERATION_FORBIDDEN', 'Moderators cannot moderate their own resource.');
   const universityId = current.course.programme.department.faculty.universityId;
-  if (action === 'REMOVED') {
-    if (!hasRole(actor, 'SUPER_ADMIN') && !hasRoleInUniversity(actor, universityId, 'UNIVERSITY_ADMIN', 'MODERATOR')) throw new ApiError(403, 'FORBIDDEN', 'You cannot remove this resource.');
-  } else if (!hasRole(actor, 'SUPER_ADMIN') && !hasRoleInUniversity(actor, universityId, 'MODERATOR')) {
+  if (!hasRole(actor, 'SUPER_ADMIN') && !hasRoleInUniversity(actor, universityId, 'MODERATOR')) {
     throw new ApiError(403, 'FORBIDDEN', 'Only a Moderator in this university can approve or reject resources.');
   }
-  if (current.status === 'REMOVED') {
-    if (action !== 'REMOVED') throw new ApiError(404, 'RESOURCE_NOT_FOUND', 'Resource was not found.');
-    if (current.file?.provider === resourceStorage.provider) await resourceStorage.delete(current.file.storageKey);
-    return prisma.resource.findUniqueOrThrow({ where: { id: resourceId }, include: resourceInclude });
-  }
-  if (current.status !== 'PENDING' && action !== 'REMOVED') throw new ApiError(409, 'RESOURCE_NOT_PENDING', 'Only pending resources can be approved or rejected.');
+  if (current.trashedAt || current.quarantinedAt || current.status === 'REMOVED') throw new ApiError(409, 'RESOURCE_UNAVAILABLE', 'This resource is in Trash, quarantined, or unavailable.');
+  if (current.status !== 'PENDING') throw new ApiError(409, 'RESOURCE_NOT_PENDING', 'Only pending resources can be approved or rejected.');
   const updated = await prisma.$transaction(async (transaction) => {
-    const resource = await transaction.resource.update({ where: { id: resourceId }, data: { status: action }, include: resourceInclude });
-    await transaction.moderationAction.create({ data: { resourceId, actorId: actor.user.id, action, reason } });
+    const changed = await transaction.resource.updateMany({ where: { id: resourceId, status: 'PENDING', trashedAt: null, quarantinedAt: null }, data: { status: action } });
+    if (!changed.count) throw new ApiError(409, 'RESOURCE_NOT_PENDING', 'This resource has already been reviewed.');
+    const resource = await transaction.resource.findUniqueOrThrow({ where: { id: resourceId }, include: resourceInclude });
+    await transaction.moderationAction.create({ data: { resourceId, resourceIdSnapshot: resourceId, actorId: actor.user.id, action, reason } });
+    await transaction.resourceGovernanceEvent.create({ data: { resourceId, resourceIdSnapshot: resourceId, actorId: actor.user.id, actorRole: hasRole(actor, 'SUPER_ADMIN') ? 'SUPER_ADMIN' : 'MODERATOR', action: `MODERATION_${action}`, reason } });
     return resource;
   });
-  if (action === 'REMOVED' && current.file?.provider === resourceStorage.provider) await resourceStorage.delete(current.file.storageKey);
   return updated;
 }
 

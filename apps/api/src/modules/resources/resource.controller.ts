@@ -5,17 +5,17 @@ import { ApiError } from '../../errors/ApiError.js';
 import {
   createResourceSchema,
   listResourcesQuerySchema,
+  trashReasonSchema,
   updateResourceSchema,
 } from './resource.schemas.js';
 import {
   createResource,
-  deleteResource,
   findResourceById,
   findResourceFile,
   listResources,
   moderateResource,
-  updateResource,
 } from './resource.service.js';
+import { editResourceMetadata, moveResourceToTrash, replaceResourceFile } from './governance.service.js';
 import { moderationSchema } from '../auth/auth.schemas.js';
 
 function resourceId(request: Parameters<RequestHandler>[0]): string {
@@ -81,7 +81,7 @@ export const updateResourceController: RequestHandler = async (request, response
     const parsed = updateResourceSchema.safeParse(request.body);
     if (!parsed.success) throw validationError(parsed.error.issues);
     if (!request.auth) throw new ApiError(401, 'AUTHENTICATION_REQUIRED', 'Sign in to update a resource.');
-    const resource = await updateResource(resourceId(request), parsed.data, request.auth);
+    const resource = await editResourceMetadata(resourceId(request), parsed.data, request.auth);
     response.json({ data: resource });
   } catch (error) { next(error); }
 };
@@ -89,9 +89,21 @@ export const updateResourceController: RequestHandler = async (request, response
 export const deleteResourceController: RequestHandler = async (request, response, next) => {
   try {
     if (!request.auth) throw new ApiError(401, 'AUTHENTICATION_REQUIRED', 'Sign in to remove a resource.');
-    await deleteResource(resourceId(request), request.auth);
-    response.status(204).end();
+    const parsed = trashReasonSchema.safeParse(request.body);
+    if (!parsed.success) throw validationError(parsed.error.issues);
+    const resource = await moveResourceToTrash(resourceId(request), parsed.data.reason, request.auth);
+    response.json({ data: resource });
   } catch (error) { next(error); }
+};
+
+export const replaceResourceFileController: RequestHandler = async (request, response, next) => {
+  const file = request.file;
+  try {
+    if (!request.auth) throw new ApiError(401, 'AUTHENTICATION_REQUIRED', 'Sign in to replace a resource file.');
+    if (!file) throw new ApiError(400, 'RESOURCE_FILE_REQUIRED', 'Upload one file using the multipart field named "file".');
+    response.json({ data: await replaceResourceFile(resourceId(request), file, request.auth) });
+  } catch (error) { next(error); }
+  finally { if (file?.path) await rm(file.path, { force: true }).catch(() => undefined); }
 };
 
 export const moderateResourceController: RequestHandler = async (request, response, next) => {

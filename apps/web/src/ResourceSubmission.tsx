@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
-interface Course {
+export interface Course {
   id: string;
   code: string;
   title: string;
@@ -46,13 +46,13 @@ async function responseError(response: Response, fallback: string) {
   }
 }
 
-async function fetchCourses(): Promise<Course[]> {
+export async function fetchCourses(universitySlug = 'university-of-lagos'): Promise<Course[]> {
   const pageSize = 100;
-  const firstResponse = await fetch(`/api/v1/courses?university=university-of-lagos&page=1&pageSize=${pageSize}`);
+  const firstResponse = await fetch(`/api/v1/courses?university=${encodeURIComponent(universitySlug)}&page=1&pageSize=${pageSize}`);
   if (!firstResponse.ok) throw new Error(await responseError(firstResponse, 'Could not load courses for resource submission.'));
   const firstPage = (await firstResponse.json()) as CourseListResponse;
   const pages = await Promise.all(Array.from({ length: Math.max(0, firstPage.meta.totalPages - 1) }, async (_, index) => {
-    const response = await fetch(`/api/v1/courses?university=university-of-lagos&page=${index + 2}&pageSize=${pageSize}`);
+    const response = await fetch(`/api/v1/courses?university=${encodeURIComponent(universitySlug)}&page=${index + 2}&pageSize=${pageSize}`);
     if (!response.ok) throw new Error(await responseError(response, 'Could not load the full course list.'));
     return (await response.json() as CourseListResponse).data;
   }));
@@ -64,7 +64,7 @@ function formatFileSize(bytes: number) {
 }
 
 export function ResourceSubmission() {
-  const coursesQuery = useQuery({ queryKey: ['courses', 'resource-submission', 'university-of-lagos'], queryFn: fetchCourses, staleTime: 5 * 60_000 });
+  const coursesQuery = useQuery({ queryKey: ['courses', 'resource-submission', 'university-of-lagos'], queryFn: () => fetchCourses(), staleTime: 5 * 60_000 });
   const [courseId, setCourseId] = useState('');
   const [academicSessionId, setAcademicSessionId] = useState('');
   const [semesterId, setSemesterId] = useState('');

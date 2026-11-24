@@ -159,3 +159,13 @@ The API auth and moderation flows and local upload workflow have already been im
 - The subsequent profile-save screenshot showed the same issue for `UserProfile`: profile GET included database metadata and onboarding submitted it back to the strict profile schema. The profile GET response now selects only username, avatar URL, bio, GitHub URL, and LinkedIn URL; the web client also constructs a field allowlist before saving.
 - The account dashboard read the academic-profile response from `data.profile`, although that endpoint returns `data.academicProfile`, making saved academic selections appear unset. Corrected the response mapping and updated preference labels to match current enums.
 - Typechecking, the web production build, and `git diff --check` passed. Reload onboarding after seeding so the programme options are fetched again.
+
+## Resource governance implementation (2026-11-24)
+
+- Added recoverable resource Trash, reasoned moderator deletion requests, Super Administrator decisions, quarantine, restore, permanent purge, scheduled purge retries, report submission/review, metadata edits, file replacement, and governance history. Public discovery and file access exclude trashed or quarantined resources.
+- Super Administrators can approve their own pending submissions and their own deletion requests. Moderators remain unable to self-approve submissions or decide deletion requests.
+- Added `20261124150000_resource_governance` Prisma migration with resource governance fields, purge/report/request tables, and audit snapshots that survive permanent resource deletion. The migration has not been applied to PostgreSQL; run `npm run db:migrate` before exercising these workflows against the database.
+- Added a web governance workspace and report form, plus API documentation for the new routes.
+- Verification passed: `npm run typecheck`, `npm run build`, `npm run test:api` (56 tests across 4 files), and `git diff --check`. API tests bind a localhost port, so they were run with loopback access after sandbox restrictions blocked the initial attempt.
+- Live database migration, scheduled purge against persisted records, and external object storage have not been integration-tested. Replacement-file cleanup logs an orphaned old-storage-file error if deletion fails after a successful replacement; durable retry currently applies to Trash purges.
+- Governance follow-up: the edit panel now uses the upload form fields prefilled from the resource, including course/session/semester, and displays the current file read-only; file replacement remains a separate Super Admin action. History resolves actor IDs to display names and usernames. API suite now passes 57 tests; typecheck/build and `git diff --check` pass.

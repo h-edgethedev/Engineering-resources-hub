@@ -21,6 +21,8 @@ const resourceFields = {
   title: z.string().trim().min(1).max(250),
   description: z.string().trim().max(10_000).nullable().optional(),
   type: z.enum(resourceTypes),
+  sourceAttribution: z.string().trim().max(500).nullable().optional(),
+  tags: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
 };
 
 export const createResourceSchema = z.object(resourceFields).strict();
@@ -31,9 +33,25 @@ export const updateResourceSchema = z.object({
   title: resourceFields.title.optional(),
   description: resourceFields.description,
   type: resourceFields.type.optional(),
+  sourceAttribution: resourceFields.sourceAttribution,
+  tags: resourceFields.tags,
 }).strict().refine((value) => Object.keys(value).length > 0, 'provide at least one field to update');
 
 export const resourceIdParamsSchema = z.object({ resourceId: uuid });
+export const requestIdParamsSchema = z.object({ requestId: uuid });
+export const trashReasonSchema = z.object({ reason: z.string().trim().min(1).max(2000) }).strict();
+export const quarantineSchema = z.object({ reason: z.string().trim().min(1).max(2000) }).strict();
+export const deletionRequestSchema = z.object({
+  category: z.enum(['DUPLICATE', 'INCORRECT_CLASSIFICATION', 'WRONG_COURSE', 'OUTDATED_MISLEADING', 'CORRUPTED_FILE', 'COPYRIGHT', 'PRIVACY', 'INAPPROPRIATE', 'OTHER']),
+  explanation: z.string().trim().min(1).max(2000),
+}).strict().refine((value) => value.category !== 'OTHER' || value.explanation.length > 0, 'an explanation is required for Other');
+export const deletionDecisionSchema = z.object({ action: z.enum(['APPROVE', 'REJECT']), note: z.string().trim().max(2000).optional() }).strict();
+export const purgeSchema = z.object({ confirmation: z.literal('PERMANENTLY_DELETE'), reason: z.string().trim().min(1).max(2000) }).strict();
+export const resourceReportSchema = z.object({
+  category: z.enum(['BROKEN_FILE', 'WRONG_CONTENT', 'COPYRIGHT', 'PRIVACY', 'INAPPROPRIATE', 'OTHER']),
+  explanation: z.string().trim().min(1).max(2000),
+}).strict();
+export const reportDecisionSchema = z.object({ action: z.enum(['RESOLVED', 'DISMISSED']), note: z.string().trim().min(1).max(2000) }).strict();
 
 export const listResourcesQuerySchema = z.object({
   courseId: uuid.optional(),
