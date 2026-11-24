@@ -2,7 +2,7 @@
 
 ## Purpose and scope
 
-Engineering Resources Hub (EngHub) is an open academic resource platform. Its first catalogue is for the University of Lagos (UNILAG), within the official Faculty of Engineering. The initial departments are Computer Engineering and Electrical and Electronics Engineering. The project owner validates course data; the seed/import workflow currently loads a reviewed Computer Engineering course CSV.
+Engineering Resources Hub (EngHub) is an open academic resource platform. Its first catalogue is for the University of Lagos (UNILAG), within the official Faculty of Engineering. The initial departments are Computer Engineering and Electrical and Electronics Engineering. Both programmes offer 100, 200, and 300 Level structures with First and Second Semester selections. The project owner validates course data; the seed/import workflow currently loads a reviewed Computer Engineering course CSV.
 
 The repository is an npm workspaces monorepo and requires Node.js 24 or newer. The root package provides scripts for development, typechecking, builds, API tests, and Prisma database tasks.
 

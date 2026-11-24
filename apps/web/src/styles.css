@@ -256,6 +256,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .discovery-resource-card p:not(.card-kicker) { margin: 7px 0 0; color: #768092; font-size: 10px; line-height: 1.55; }
 .discovery-resource-card .resource-description { max-width: 720px; }
 .resource-public-badge { flex: 0 0 auto; padding: 5px 8px; border-radius: 99px; background: #e9f7ef; color: #287247; font-size: 9px; font-weight: 750; }
+.resource-uploader-tag { display: inline-flex; align-items: center; width: fit-content; margin-top: 8px; padding: 4px 8px; border: 1px solid #e2e7f0; border-radius: 999px; background: #f7f8fb; color: #536176; font-size: 10px; font-weight: 650; }
 .detail-page { max-width: 920px; }
 .detail-page > .text-link { display: inline-flex; margin-bottom: 35px; }
 .detail-page > .eyebrow { margin-top: 22px; }
@@ -376,7 +377,8 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .review-pulse-alert:hover { box-shadow: 0 10px 34px #152b1d35; transform: translateY(-2px); }
 .review-pulse-icon { position: relative; z-index: 1; display: grid; width: 44px; height: 44px; flex: 0 0 auto; place-items: center; border: 2px solid #fff; border-radius: 50%; outline: 2px solid #42c779; background: #08793d; color: #fff; }
 .review-pulse-icon svg { width: 22px; height: 22px; }
-.review-pulse-rings, .review-pulse-rings span { position: absolute; top: 50%; left: 31px; width: 48px; height: 48px; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; }
+.review-pulse-rings { position: absolute; inset: 0; pointer-events: none; }
+.review-pulse-rings span { position: absolute; top: 50%; left: 31px; width: 48px; height: 48px; border-radius: 50%; transform: translate(-50%, -50%); }
 .review-pulse-rings span { border: 2px solid #39c879; animation: review-ring-propagate 2.4s ease-out infinite; }
 .review-pulse-rings span:nth-child(2) { animation-delay: 1.2s; }
 .review-pulse-message { display: grid; gap: 3px; padding-right: 2px; }

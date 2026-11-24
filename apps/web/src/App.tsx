@@ -36,7 +36,7 @@ interface ApiResponse<T> {
 }
 
 interface LandingCourse { id: string; code: string; title: string; programme: { department: { name: string } }; }
-interface LandingResource { id: string; title: string; type: string; course: { id: string; code: string; title: string }; }
+interface LandingResource { id: string; title: string; type: string; course: { id: string; code: string; title: string }; uploader: { profile: { username: string | null } | null } | null; }
 
 interface DepartmentDetails extends Department {
   faculty: { name: string; slug: string };
@@ -214,7 +214,7 @@ function LandingPage() {
             <div className="section-heading-row"><SectionHeading eyebrow="LEARN TOGETHER" title="Resources for the work ahead" description="Lecture notes, past questions, lab guides and more, organized around your courses." /><Link className="text-link section-action" to="/explore">Browse all resources <ArrowIcon /></Link></div>
             {resourcesQuery.isPending && <div className="catalog-message" role="status">Loading approved resources…</div>}
             {resourcesQuery.isError && <div className="catalog-message catalog-error" role="alert">Resources are temporarily unavailable. <button onClick={() => void resourcesQuery.refetch()}>Try again</button></div>}
-            {resourcesQuery.data?.length ? <div className="landing-resource-preview">{resourcesQuery.data.map((resource) => <article className="landing-preview-card" key={resource.id}><p className="card-kicker">{resource.type.replaceAll('_', ' ')}</p><h3><Link to={`/resources/${resource.id}`}>{resource.title}</Link></h3><p><Link to={`/courses/${resource.course.id}`}>{resource.course.code} · {resource.course.title}</Link></p></article>)}</div> : resourcesQuery.isSuccess && <EmptyCatalogCard title="No approved resources yet" message="Approved course materials will appear here after they pass review." action="Learn how it works" href="#about" />}
+            {resourcesQuery.data?.length ? <div className="landing-resource-preview">{resourcesQuery.data.map((resource) => <article className="landing-preview-card" key={resource.id}><p className="card-kicker">{resource.type.replaceAll('_', ' ')}</p><h3><Link to={`/resources/${resource.id}`}>{resource.title}</Link></h3><p><Link to={`/courses/${resource.course.id}`}>{resource.course.code} · {resource.course.title}</Link></p><span className="resource-uploader-tag">@{resource.uploader?.profile?.username ?? 'username unavailable'}</span></article>)}</div> : resourcesQuery.isSuccess && <EmptyCatalogCard title="No approved resources yet" message="Approved course materials will appear here after they pass review." action="Learn how it works" href="#about" />}
           </div>
         </section>
 

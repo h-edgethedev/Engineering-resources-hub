@@ -3,7 +3,10 @@ import { prisma } from '../../infrastructure/database.js';
 import type { UserPreferencesInput, UserProfileInput } from './onboarding.schemas.js';
 
 export async function findUserProfile(userId: string) {
-  return prisma.userProfile.findUnique({ where: { userId } });
+  return prisma.userProfile.findUnique({
+    where: { userId },
+    select: { username: true, avatarUrl: true, bio: true, githubUrl: true, linkedInUrl: true },
+  });
 }
 
 export async function saveUserProfile(userId: string, profile: UserProfileInput) {
@@ -18,7 +21,10 @@ export async function saveUserProfile(userId: string, profile: UserProfileInput)
 }
 
 export async function findUserPreferences(userId: string) {
-  return prisma.userPreferences.findUnique({ where: { userId } });
+  return prisma.userPreferences.findUnique({
+    where: { userId },
+    select: { resourceKinds: true, learningInterests: true, learningGoals: true },
+  });
 }
 
 export async function saveUserPreferences(userId: string, preferences: UserPreferencesInput) {

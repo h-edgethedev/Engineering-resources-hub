@@ -19,7 +19,7 @@ interface Resource {
   academicSession: { id: string; label: string } | null;
   semester: { id: string; code: string; label: string; programmeLevel: { code: string; label: string | null } } | null;
   file: { id: string; originalFilename: string; mediaType: string; byteSize: number } | null;
-  uploader: { id: string; displayName: string } | null;
+  uploader: { id: string; displayName: string; profile: { username: string | null } | null } | null;
 }
 
 async function api<T>(path: string): Promise<Envelope<T>> {
@@ -89,7 +89,7 @@ function CourseCard({ course }: { course: Course }) {
 }
 
 function ResourceCard({ resource }: { resource: Resource }) {
-  return <article className="discovery-resource-card"><div><p className="card-kicker">{formatResourceType(resource.type)}</p><h3><Link to={`/resources/${resource.id}`}>{resource.title}</Link></h3><p><Link to={`/courses/${resource.course.id}`}>{resource.course.code} · {resource.course.title}</Link></p>{resource.description && <p className="resource-description">{resource.description}</p>}</div><span className="resource-public-badge">Approved</span></article>;
+  return <article className="discovery-resource-card"><div><p className="card-kicker">{formatResourceType(resource.type)}</p><h3><Link to={`/resources/${resource.id}`}>{resource.title}</Link></h3><p><Link to={`/courses/${resource.course.id}`}>{resource.course.code} · {resource.course.title}</Link></p><span className="resource-uploader-tag">@{resource.uploader?.profile?.username ?? 'username unavailable'}</span>{resource.description && <p className="resource-description">{resource.description}</p>}</div><span className="resource-public-badge">Approved</span></article>;
 }
 
 export function CourseDetailPage() {
@@ -122,7 +122,7 @@ export function ResourceDetailPage() {
     {resourceQuery.isPending && <p className="discovery-state" role="status">Loading resource…</p>}
     {resourceQuery.isError && <div className="catalog-message catalog-error" role="alert">{resourceQuery.error.message}</div>}
     {resource && <><p className="eyebrow">{formatResourceType(resource.type)} · APPROVED RESOURCE</p><h1>{resource.title}</h1><p className="detail-course-code"><Link to={`/courses/${resource.course.id}`}>{resource.course.code} · {resource.course.title}</Link></p>{resource.description && <p className="detail-description">{resource.description}</p>}
-      <dl className="resource-metadata"><div><dt>Academic session</dt><dd>{resource.academicSession?.label ?? 'Not specified'}</dd></div><div><dt>Level and semester</dt><dd>{resource.semester ? `${resource.semester.programmeLevel.label ?? `${resource.semester.programmeLevel.code} Level`} · ${resource.semester.label}` : 'Not specified'}</dd></div><div><dt>Shared by</dt><dd>{resource.uploader?.displayName ?? 'EngHub community'}</dd></div></dl>
+      <dl className="resource-metadata"><div><dt>Academic session</dt><dd>{resource.academicSession?.label ?? 'Not specified'}</dd></div><div><dt>Level and semester</dt><dd>{resource.semester ? `${resource.semester.programmeLevel.label ?? `${resource.semester.programmeLevel.code} Level`} · ${resource.semester.label}` : 'Not specified'}</dd></div><div><dt>Shared by</dt><dd>{resource.uploader?.displayName ?? 'EngHub community'}<br /><span className="resource-uploader-tag">@{resource.uploader?.profile?.username ?? 'username unavailable'}</span></dd></div></dl>
       <div className="resource-actions"><a className="button button-purple" href={`/api/v1/resources/${resource.id}/file/download`}>Download file</a>{resource.file && <span>{resource.file.originalFilename} · {Math.max(1, Math.round(resource.file.byteSize / 1024))} KB</span>}</div>
       {resource.file?.mediaType === 'application/pdf' && <section className="resource-preview" aria-label="Document preview"><iframe title={`Preview of ${resource.title}`} src={`/api/v1/resources/${resource.id}/file`} /></section>}
       {resource.file?.mediaType === 'text/plain' && <section className="resource-preview"><iframe title={`Preview of ${resource.title}`} src={`/api/v1/resources/${resource.id}/file`} /></section>}

@@ -22,6 +22,7 @@ interface ResourceItem {
   academicSession: { label: string } | null;
   semester: { label: string; programmeLevel: { code: string; label: string | null } } | null;
   file: { originalFilename: string; mediaType: string; byteSize: number } | null;
+  uploader: { profile: { username: string | null } | null } | null;
 }
 
 interface AccountDetails {
@@ -66,21 +67,21 @@ const preferenceLabels: Record<string, string> = {
   LECTURE_NOTE: 'Lecture notes',
   TEXTBOOK: 'Textbooks',
   PAST_QUESTION: 'Past questions',
-  SOLUTION: 'Worked solutions',
+  SLIDES: 'Slides',
+  WORKED_SOLUTION: 'Worked solutions',
   LAB_MANUAL: 'Lab manuals',
   PROGRAMMING_EXERCISE: 'Programming exercises',
-  OTHER: 'Other materials',
+  PROJECT: 'Projects',
   PROGRAMMING: 'Programming',
+  AI: 'Artificial intelligence',
   ELECTRONICS: 'Electronics',
-  POWER_SYSTEMS: 'Power systems',
-  COMMUNICATIONS: 'Communications',
-  EMBEDDED_SYSTEMS: 'Embedded systems',
-  AI_DATA: 'AI and data',
-  DESIGN: 'Design',
+  TELECOMMUNICATIONS: 'Telecommunications',
+  ROBOTICS: 'Robotics',
+  MATHEMATICS: 'Mathematics',
   EXAM_PREPARATION: 'Exam preparation',
-  PROJECT_WORK: 'Project work',
-  CONCEPT_REVIEW: 'Concept review',
-  CAREER_DEVELOPMENT: 'Career development',
+  CONCEPT_MASTERY: 'Concept mastery',
+  PROJECT_BUILDING: 'Project building',
+  RESEARCH: 'Research',
 };
 
 async function readApi<T>(path: string): Promise<Envelope<T>> {
@@ -95,12 +96,12 @@ async function readApi<T>(path: string): Promise<Envelope<T>> {
 async function loadAccountDetails(): Promise<AccountDetails> {
   const [profileResult, academicResult, preferencesResult] = await Promise.all([
     readApi<{ profile: AccountDetails['profile'] }>('/auth/me/profile'),
-    readApi<{ profile: AccountDetails['academicProfile'] }>('/auth/me/academic-profile'),
+    readApi<{ academicProfile: AccountDetails['academicProfile'] }>('/auth/me/academic-profile'),
     readApi<{ preferences: AccountDetails['preferences'] }>('/auth/me/preferences'),
   ]);
   return {
     profile: profileResult.data.profile,
-    academicProfile: academicResult.data.profile,
+    academicProfile: academicResult.data.academicProfile,
     preferences: preferencesResult.data.preferences,
   };
 }
@@ -124,6 +125,7 @@ function UploadedResourceCard({ resource }: { resource: ResourceItem }) {
       <p className="card-kicker">{resource.type.replaceAll('_', ' ')}{context ? ` · ${context}` : ''}</p>
       <h3><Link to={`/resources/${resource.id}`}>{resource.title}</Link></h3>
       <p className="account-resource-course"><Link to={`/courses/${resource.course.id}`}>{resource.course.code} · {resource.course.title}</Link></p>
+      <span className="resource-uploader-tag">@{resource.uploader?.profile?.username ?? 'username unavailable'}</span>
       <p className="account-resource-file">{resource.file?.originalFilename ?? 'File unavailable'} · Submitted {new Date(resource.createdAt).toLocaleDateString()}</p>
     </div>
     <ResourceStatus status={resource.status} />

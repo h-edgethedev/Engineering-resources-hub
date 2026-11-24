@@ -19,7 +19,7 @@ interface AcademicProfile {
   currentSemesterId: string | null;
   university?: University | null;
 }
-interface ApiEnvelope<T> { data: T; error?: { message?: string } }
+interface ApiEnvelope<T> { data: T; error?: { message?: string; details?: Array<{ path?: string; message?: string }> } }
 interface AcademicProfileInput extends Omit<AcademicProfile, 'university'> {}
 interface CountryOption { code: string; label: string }
 interface UserProfileFields { username: string | null; avatarUrl: string | null; bio: string | null; githubUrl: string | null; linkedInUrl: string | null }
@@ -53,7 +53,10 @@ const emptyProfile: AcademicProfileInput = {
 
 async function readApiData<T>(response: Response, fallback: string): Promise<T> {
   const body = await response.json().catch(() => null) as ApiEnvelope<T> | null;
-  if (!response.ok) throw new Error(body?.error?.message ?? fallback);
+  if (!response.ok) {
+    const details = body?.error?.details?.map((issue) => `${issue.path || 'Request'}: ${issue.message}`).join('; ');
+    throw new Error([body?.error?.message ?? fallback, details].filter(Boolean).join(' '));
+  }
   return body?.data as T;
 }
 
@@ -213,7 +216,14 @@ export function AcademicOnboarding() {
   }
 
   function normalizedUserProfile(value: UserProfileFields): UserProfileFields {
-    return Object.fromEntries(Object.entries(value).map(([key, fieldValue]) => [key, typeof fieldValue === 'string' && fieldValue.trim() === '' ? null : typeof fieldValue === 'string' ? fieldValue.trim() : fieldValue])) as UserProfileFields;
+    const normalize = (fieldValue: string | null) => typeof fieldValue === 'string' && fieldValue.trim() ? fieldValue.trim() : null;
+    return {
+      username: normalize(value.username)?.toLowerCase() ?? null,
+      avatarUrl: normalize(value.avatarUrl),
+      bio: normalize(value.bio),
+      githubUrl: normalize(value.githubUrl),
+      linkedInUrl: normalize(value.linkedInUrl),
+    };
   }
 
   function updateUserProfile(field: keyof UserProfileFields, value: string) {
