@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { PublicHeader } from './PublicHeader';
 import { useAuth } from './auth';
 import { fetchCourses } from './ResourceSubmission';
@@ -57,8 +57,11 @@ function useGovernanceRefresh() {
 
 export function ResourceGovernancePage() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab');
+  const initialTab = requestedTab === 'requests' || requestedTab === 'reports' || requestedTab === 'trash' || requestedTab === 'quarantined' ? requestedTab : 'published';
   const superAdmin = Boolean(user?.roleAssignments.some((grant) => grant.role === 'SUPER_ADMIN'));
-  const [tab, setTab] = useState<'published' | 'requests' | 'reports' | 'trash' | 'quarantined'>('published');
+  const [tab, setTab] = useState<'published' | 'requests' | 'reports' | 'trash' | 'quarantined'>(initialTab);
   const [page, setPage] = useState(1);
   const [message, setMessage] = useState('');
   const base = '/resources';

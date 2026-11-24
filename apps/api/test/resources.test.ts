@@ -17,6 +17,7 @@ const db = vi.hoisted(() => ({
   deletionRequest: { findFirst: vi.fn(), create: vi.fn(), findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), findMany: vi.fn(), count: vi.fn(), updateMany: vi.fn() },
   resourcePurgeJob: { upsert: vi.fn(), findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), findMany: vi.fn(), updateMany: vi.fn(), update: vi.fn() },
   resourceReport: { create: vi.fn(), count: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn(), findUniqueOrThrow: vi.fn() },
+  governanceInboxState: { findUnique: vi.fn(), upsert: vi.fn() },
   user: { findMany: vi.fn() },
   $transaction: vi.fn(),
 }));
@@ -53,6 +54,7 @@ const resource = {
   type: 'LECTURE_NOTE',
   status: 'PENDING',
   uploadedById: userId,
+  createdAt: new Date('2026-11-24T12:00:00Z'),
   trashedAt: null,
   quarantinedAt: null,
   course: { id: courseId, code: 'CPE 101', title: 'Introduction to Computing' },
@@ -150,6 +152,8 @@ beforeEach(() => {
   db.resourceReport.updateMany.mockResolvedValue({ count: 1 });
   db.resourceReport.findUniqueOrThrow.mockResolvedValue({ id: 'report-1', status: 'RESOLVED' });
   db.user.findMany.mockResolvedValue([]);
+  db.governanceInboxState.findUnique.mockResolvedValue(null);
+  db.governanceInboxState.upsert.mockResolvedValue({ lastViewedAt: new Date() });
   db.$transaction.mockImplementation((callback) => callback(db));
   storage.put.mockResolvedValue({ storageKey: 'generated/resource.pdf' });
   db.course.findFirst.mockResolvedValue({ id: courseId });
@@ -412,5 +416,28 @@ describe('resource management endpoints', () => {
     const response = await request(`/api/v1/resources/${resourceId}/history`);
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ data: { events: [{ actorName: 'Test Student (@teststudent)' }] } });
+  });
+
+  it('summarizes unseen resource, deletion, and report work for moderators', async () => {
+    db.authSession.findUnique.mockResolvedValueOnce({
+      id: 'test-session-id', csrfTokenHash, expiresAt: new Date(Date.now() + 60_000), revokedAt: null,
+      user: { id: '941e3fa0-122b-11e1-b85c-61cd3cbb3218', email: 'moderator@example.test', displayName: 'Moderator', status: 'ACTIVE', emailVerifiedAt: new Date(), roleAssignments: [{ id: 'moderator-role', role: 'MODERATOR', universityId, scopeKey: `university:${universityId}` }] },
+    });
+    db.resource.count.mockResolvedValueOnce(1).mockResolvedValueOnce(1);
+    db.deletionRequest.count.mockResolvedValueOnce(2).mockResolvedValueOnce(2);
+    db.resourceReport.count.mockResolvedValueOnce(3).mockResolvedValueOnce(3);
+    const response = await request('/api/v1/resources/governance/inbox');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ data: { unreadCount: 6, unreadCounts: { resources: 1, deletionRequests: 2, reports: 3 }, counts: { resources: 1, deletionRequests: 2, reports: 3 } } });
+  });
+
+  it('records when a moderator has opened the notification inbox', async () => {
+    db.authSession.findUnique.mockResolvedValueOnce({
+      id: 'test-session-id', csrfTokenHash, expiresAt: new Date(Date.now() + 60_000), revokedAt: null,
+      user: { id: '941e3fa0-122b-11e1-b85c-61cd3cbb3218', email: 'moderator@example.test', displayName: 'Moderator', status: 'ACTIVE', emailVerifiedAt: new Date(), roleAssignments: [{ id: 'moderator-role', role: 'MODERATOR', universityId, scopeKey: `university:${universityId}` }] },
+    });
+    const response = await request('/api/v1/resources/governance/inbox/seen', json({}));
+    expect(response.status).toBe(200);
+    expect(db.governanceInboxState.upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: '941e3fa0-122b-11e1-b85c-61cd3cbb3218' } }));
   });
 });

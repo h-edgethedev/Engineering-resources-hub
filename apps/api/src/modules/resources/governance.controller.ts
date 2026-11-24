@@ -4,7 +4,7 @@ import { ApiError } from '../../errors/ApiError.js';
 import type { AuthContext } from '../auth/auth.types.js';
 import {
   cancelDeletionRequest, clearQuarantine, decideDeletionRequest, listDeletionRequests, listQuarantined, listTrash,
-  listResourceReports, moveResourceToTrash, quarantineResource, requestPurge, requestResourceDeletion, resourceHistory, restoreResource, resolveResourceReport, submitResourceReport,
+  getGovernanceInbox, listResourceReports, markGovernanceInboxViewed, moveResourceToTrash, quarantineResource, requestPurge, requestResourceDeletion, resourceHistory, restoreResource, resolveResourceReport, submitResourceReport,
 } from './governance.service.js';
 import { deletionDecisionSchema, deletionRequestSchema, purgeSchema, quarantineSchema, reportDecisionSchema, requestIdParamsSchema, resourceIdParamsSchema, resourceReportSchema, trashReasonSchema } from './resource.schemas.js';
 
@@ -54,6 +54,14 @@ export const listTrashController: RequestHandler = async (request, response, nex
 };
 export const listQuarantinedController: RequestHandler = async (request, response, next) => {
   try { const query = parsePage(request); const result = await listQuarantined(actor(request), query.page, query.pageSize); response.json({ data: result.items, meta: result.meta }); }
+  catch (error) { next(error); }
+};
+export const governanceInboxController: RequestHandler = async (request, response, next) => {
+  try { response.json({ data: await getGovernanceInbox(actor(request)) }); }
+  catch (error) { next(error); }
+};
+export const markGovernanceInboxViewedController: RequestHandler = async (request, response, next) => {
+  try { response.json({ data: await markGovernanceInboxViewed(actor(request)) }); }
   catch (error) { next(error); }
 };
 export const submitResourceReportController: RequestHandler = async (request, response, next) => {

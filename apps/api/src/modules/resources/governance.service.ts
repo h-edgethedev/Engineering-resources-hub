@@ -224,6 +224,47 @@ export async function listQuarantined(actor: AuthContext, page: number, pageSize
   return { items, meta: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } };
 }
 
+export async function getGovernanceInbox(actor: AuthContext) {
+  const isAdmin = isSuperAdmin(actor);
+  const universityIds = actor.user.roleAssignments.filter((grant) => grant.role === 'MODERATOR' && grant.universityId).map((grant) => grant.universityId as string);
+  if (!isAdmin && universityIds.length === 0) throw new ApiError(403, 'FORBIDDEN', 'Only Moderators and Super Administrators can view governance notifications.');
+  const state = await prisma.governanceInboxState.findUnique({ where: { userId: actor.user.id }, select: { lastViewedAt: true } });
+  const lastViewedAt = state?.lastViewedAt ?? new Date(0);
+  const resourceScope = isAdmin ? {} : { course: { programme: { department: { faculty: { universityId: { in: universityIds } } } } } };
+  const reviewWhere = {
+    status: 'PENDING' as const, trashedAt: null, quarantinedAt: null,
+    ...(!isAdmin ? { uploadedById: { not: actor.user.id } } : {}), ...resourceScope,
+  };
+  const requestScope = isAdmin ? {} : { universityIdSnapshot: { in: universityIds } };
+  const reportScope = isAdmin ? {} : { universityIdSnapshot: { in: universityIds } };
+  const [pendingResources, deletionRequests, reports, unreadResources, unreadRequests, unreadReports, totalResources, totalRequests, totalReports] = await Promise.all([
+    prisma.resource.findMany({ where: reviewWhere, include: resourceInclude, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take: 8 }),
+    prisma.deletionRequest.findMany({ where: { status: 'PENDING', ...requestScope }, include: { resource: { include: resourceInclude } }, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take: 8 }),
+    prisma.resourceReport.findMany({ where: { status: 'OPEN', ...reportScope }, include: { resource: { include: resourceInclude } }, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take: 8 }),
+    prisma.resource.count({ where: { ...reviewWhere, createdAt: { gt: lastViewedAt } } }),
+    prisma.deletionRequest.count({ where: { status: 'PENDING', ...requestScope, createdAt: { gt: lastViewedAt } } }),
+    prisma.resourceReport.count({ where: { status: 'OPEN', ...reportScope, createdAt: { gt: lastViewedAt } } }),
+    prisma.resource.count({ where: reviewWhere }),
+    prisma.deletionRequest.count({ where: { status: 'PENDING', ...requestScope } }),
+    prisma.resourceReport.count({ where: { status: 'OPEN', ...reportScope } }),
+  ]);
+  const reviewLink = isAdmin ? '/app/admin/resources' : '/app/moderation/queue';
+  const items = [
+    ...pendingResources.map((resource) => ({ id: resource.id, kind: 'RESOURCE_REVIEW', title: resource.title, detail: `${resource.course.code} · ${resource.course.title}`, createdAt: resource.createdAt, href: reviewLink })),
+    ...deletionRequests.map((request) => ({ id: request.id, kind: 'DELETION_REQUEST', title: request.resource?.title ?? 'Deletion request', detail: request.explanation, createdAt: request.createdAt, href: '/app/governance/resources?tab=requests' })),
+    ...reports.map((report) => ({ id: report.id, kind: 'RESOURCE_REPORT', title: report.resource?.title ?? 'Reported resource', detail: report.explanation, createdAt: report.createdAt, href: '/app/governance/resources?tab=reports' })),
+  ].sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime()).slice(0, 12);
+  const counts = { resources: totalResources, deletionRequests: totalRequests, reports: totalReports };
+  const unreadCounts = { resources: unreadResources, deletionRequests: unreadRequests, reports: unreadReports };
+  return { unreadCount: unreadResources + unreadRequests + unreadReports, unreadCounts, counts, items, lastViewedAt: state?.lastViewedAt ?? null };
+}
+
+export async function markGovernanceInboxViewed(actor: AuthContext) {
+  if (!isSuperAdmin(actor) && !actor.user.roleAssignments.some((grant) => grant.role === 'MODERATOR' && grant.universityId)) throw new ApiError(403, 'FORBIDDEN', 'Only Moderators and Super Administrators can view governance notifications.');
+  const state = await prisma.governanceInboxState.upsert({ where: { userId: actor.user.id }, create: { userId: actor.user.id, lastViewedAt: new Date() }, update: { lastViewedAt: new Date() }, select: { lastViewedAt: true } });
+  return state;
+}
+
 export async function submitResourceReport(resourceId: string, category: string, explanation: string, actor: AuthContext) {
   const resource = requireResource(await resourceAccess(resourceId));
   if (resource.status !== 'APPROVED' || resource.trashedAt || resource.quarantinedAt) throw new ApiError(404, 'RESOURCE_NOT_REPORTABLE', 'Only currently published resources can be reported.');

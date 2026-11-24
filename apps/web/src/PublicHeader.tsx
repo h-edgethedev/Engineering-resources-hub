@@ -1,36 +1,50 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useAuth } from './auth';
 
-interface PendingReviewResponse {
-  data: unknown[];
-  meta?: { total: number };
-}
+interface NotificationItem { id: string; kind: 'RESOURCE_REVIEW' | 'DELETION_REQUEST' | 'RESOURCE_REPORT'; title: string; detail: string; createdAt: string; href: string; }
+interface GovernanceInbox { unreadCount: number; unreadCounts: { resources: number; deletionRequests: number; reports: number }; counts: { resources: number; deletionRequests: number; reports: number }; items: NotificationItem[]; }
+interface ApiEnvelope<T> { data: T; }
+const notificationType = (kind: NotificationItem['kind']) => kind === 'RESOURCE_REVIEW' ? 'Resource review' : kind === 'DELETION_REQUEST' ? 'Deletion request' : 'Reported resource';
 
 export function PublicHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [inboxOpen, setInboxOpen] = useState(false);
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const isSuperAdmin = user?.roleAssignments.some((assignment) => assignment.role === 'SUPER_ADMIN') ?? false;
   const isUniversityAdmin = user?.roleAssignments.some((assignment) => assignment.role === 'UNIVERSITY_ADMIN') ?? false;
   const isModerator = user?.roleAssignments.some((assignment) => assignment.role === 'MODERATOR') ?? false;
   const canReviewResources = isSuperAdmin || isModerator;
-  const pendingReviewsQuery = useQuery({
-    queryKey: ['pending-review-count', user?.id],
+  const inboxQuery = useQuery({
+    queryKey: ['governance-inbox', user?.id],
     enabled: canReviewResources,
     staleTime: 15_000,
     refetchInterval: 30_000,
     refetchOnWindowFocus: true,
     queryFn: async () => {
-      const response = await fetch('/api/v1/resources?status=PENDING&reviewQueue=true&page=1&pageSize=1', { credentials: 'include' });
-      if (!response.ok) throw new Error('Could not load the review count.');
-      return response.json() as Promise<PendingReviewResponse>;
+      const response = await fetch('/api/v1/resources/governance/inbox', { credentials: 'include' });
+      if (!response.ok) throw new Error('Could not load governance notifications.');
+      return (await response.json() as ApiEnvelope<GovernanceInbox>).data;
     },
   });
-  const pendingCount = canReviewResources ? pendingReviewsQuery.data?.meta?.total ?? 0 : 0;
-  const reviewLink = isModerator && !isSuperAdmin ? '/app/moderation/queue' : '/app/admin/resources';
-  const countLabel = pendingCount > 99 ? '99+' : String(pendingCount);
+  const unreadCount = inboxQuery.data?.unreadCount ?? 0;
+  const countLabel = unreadCount > 99 ? '99+' : String(unreadCount);
   const closeMenu = () => setMenuOpen(false);
+
+  async function revealInbox() {
+    if (inboxOpen) return;
+    setInboxOpen(true);
+    try {
+      const csrfResponse = await fetch('/api/v1/auth/csrf', { credentials: 'include' });
+      if (!csrfResponse.ok) return;
+      const csrf = (await csrfResponse.json() as ApiEnvelope<{ csrfToken: string }>).data.csrfToken;
+      const response = await fetch('/api/v1/resources/governance/inbox/seen', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, body: '{}' });
+      if (response.ok) await queryClient.invalidateQueries({ queryKey: ['governance-inbox', user?.id] });
+    } catch { /* Keep the inbox open; the next poll will refresh its state. */ }
+  }
+
   return (
     <>
       <header className="site-header">
@@ -45,20 +59,27 @@ export function PublicHeader() {
             <Link to="/explore" onClick={closeMenu}>Explore</Link>
             <Link to="/universities" onClick={closeMenu}>Universities</Link>
             <Link to="/#about" onClick={closeMenu}>About</Link>
-            {(isSuperAdmin || isUniversityAdmin) && <Link className="review-nav-link" to="/app/admin/resources" onClick={closeMenu}>Resource review{pendingCount > 0 && <span className="review-nav-count" aria-label={`${pendingCount} pending`}>{countLabel}</span>}</Link>}
+            {(isSuperAdmin || isUniversityAdmin) && <Link className="review-nav-link" to="/app/admin/resources" onClick={closeMenu}>Resource review</Link>}
             {(isModerator || isSuperAdmin) && <Link to="/app/governance/resources" onClick={closeMenu}>Resource governance</Link>}
             {isSuperAdmin && <Link to="/app/admin/users" onClick={closeMenu}>Users & roles</Link>}
-            {(isModerator || isSuperAdmin) && <Link className="review-nav-link" to="/app/moderation/queue" onClick={closeMenu}>Review queue{pendingCount > 0 && <span className="review-nav-count" aria-label={`${pendingCount} pending`}>{countLabel}</span>}</Link>}
+            {(isModerator || isSuperAdmin) && <Link className="review-nav-link" to="/app/moderation/queue" onClick={closeMenu}>Review queue</Link>}
             {user ? <Link to="/account" onClick={closeMenu}>My account</Link> : <Link to="/login" onClick={closeMenu}>Log in</Link>}
             <Link className="button button-small button-purple" to={user ? '/account' : '/register'} onClick={closeMenu}>{user ? 'Contribute' : 'Sign up'}</Link>
           </nav>
         </div>
       </header>
-      {pendingCount > 0 && <Link className="review-pulse-alert" to={reviewLink} aria-label={`${pendingCount} ${pendingCount === 1 ? 'resource needs' : 'resources need'} review. Open the review queue.`}>
-        <span className="review-pulse-rings" aria-hidden="true"><span /><span /></span>
-        <span className="review-pulse-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M4 13h3l2.2-6 4.1 12 2.2-6H20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg></span>
-        <span className="review-pulse-message"><strong>{pendingCount} {pendingCount === 1 ? 'resource' : 'resources'}</strong><small>waiting for review</small></span>
-      </Link>}
+      {canReviewResources && <div className="review-inbox" onMouseEnter={() => void revealInbox()} onMouseLeave={() => setInboxOpen(false)} onFocusCapture={() => void revealInbox()} onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setInboxOpen(false); }}>
+        <button className="review-inbox-trigger" type="button" aria-label={unreadCount ? `${unreadCount} unchecked governance notifications` : 'Governance notifications'} aria-expanded={inboxOpen}>
+          <span className="review-pulse-rings" aria-hidden="true"><span /><span /></span>
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none"><path d="M4 13h3l2.2-6 4.1 12 2.2-6H20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          {unreadCount > 0 && <span className="review-inbox-count">{countLabel}</span>}
+        </button>
+        {inboxOpen && <section className="review-inbox-panel" aria-label="Governance notifications">
+          <header><div><strong>Activity feed</strong><small>Pending governance work</small></div><span className="review-inbox-live"><i /> Live</span></header>
+          <div className="review-inbox-summary"><span>{inboxQuery.data?.counts.resources ?? 0} resource reviews</span><span>{inboxQuery.data?.counts.deletionRequests ?? 0} deletion requests</span><span>{inboxQuery.data?.counts.reports ?? 0} reports</span></div>
+          {inboxQuery.isPending ? <p className="review-inbox-empty">Loading notifications…</p> : inboxQuery.isError ? <p className="review-inbox-empty">Could not load notifications. They will retry automatically.</p> : inboxQuery.data?.items.length ? <ul>{inboxQuery.data.items.map((item) => <li key={`${item.kind}-${item.id}`}><Link to={item.href} onClick={() => setInboxOpen(false)}><small>{notificationType(item.kind)} · {new Date(item.createdAt).toLocaleString()}</small><strong>{item.title}</strong><span>{item.detail}</span></Link></li>)}</ul> : <p className="review-inbox-empty">You’re all caught up. No pending reviews, deletion requests, or reports.</p>}
+        </section>}
+      </div>}
     </>
   );
 }

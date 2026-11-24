@@ -59,6 +59,7 @@ CREATE TABLE "ResourceGovernanceEvent" (
   "id" UUID NOT NULL,
   "resourceId" UUID,
   "resourceIdSnapshot" UUID NOT NULL,
+  "trashGenerationSnapshot" UUID NOT NULL,
   "actorId" UUID,
   "actorRole" TEXT,
   "action" TEXT NOT NULL,

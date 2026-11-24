@@ -153,6 +153,7 @@ model User {
   preferences        UserPreferences?
   resources          Resource[]            @relation("ResourceUploader")
   moderationActions  ModerationAction[]
+  governanceInboxState GovernanceInboxState?
   createdAt          DateTime              @default(now())
   updatedAt          DateTime              @updatedAt
 
@@ -512,6 +513,14 @@ model ResourcePurgeJob {
 
   @@index([status, createdAt])
   @@index([resourceIdSnapshot, status])
+}
+
+model GovernanceInboxState {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @unique @db.Uuid
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastViewedAt  DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
 
 model ResourceReport {

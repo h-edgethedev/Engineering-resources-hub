@@ -10,7 +10,7 @@ import { requireAnyRole, requireAuth } from '../auth/auth.middleware.js';
 import { moderationSchema } from '../auth/auth.schemas.js';
 import { moderateResourceController } from './resource.controller.js';
 import {
-  cancelDeletionRequestController, clearQuarantineController, decideDeletionRequestController,
+  cancelDeletionRequestController, clearQuarantineController, decideDeletionRequestController, governanceInboxController, markGovernanceInboxViewedController,
   listDeletionRequestsController, listQuarantinedController, listResourceReportsController, listTrashController, purgeResourceController,
   quarantineResourceController, requestDeletionController, resourceHistoryController,
   restoreResourceController, resolveResourceReportController, submitResourceReportController,
@@ -20,6 +20,8 @@ export const resourceRouter = Router();
 
 resourceRouter.get('/', listResourcesController);
 resourceRouter.get('/governance/deletion-requests', requireAuth, listDeletionRequestsController);
+resourceRouter.get('/governance/inbox', requireAuth, governanceInboxController);
+resourceRouter.post('/governance/inbox/seen', requireAuth, markGovernanceInboxViewedController);
 resourceRouter.post('/governance/deletion-requests/:requestId/decision', requireAuth, validateRequest({ params: requestIdParamsSchema }), decideDeletionRequestController);
 resourceRouter.post('/governance/deletion-requests/:requestId/cancel', requireAuth, validateRequest({ params: requestIdParamsSchema }), cancelDeletionRequestController);
 resourceRouter.get('/governance/trash', requireAuth, listTrashController);
