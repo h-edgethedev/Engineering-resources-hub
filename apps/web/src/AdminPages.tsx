@@ -65,6 +65,12 @@ function ResourceQueue({ adminView }: { adminView: boolean }) {
       await readApi(`/resources/${resourceId}/moderation`, { method: 'POST', headers: await csrfHeaders(), body: JSON.stringify({ action, ...(reason.trim() ? { reason: reason.trim() } : {}) }) });
       await queryClient.invalidateQueries({ queryKey: ['operations-resources'] });
       await queryClient.invalidateQueries({ queryKey: ['pending-review-count'] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['landing-resources'] }),
+        queryClient.invalidateQueries({ queryKey: ['discovery', 'resources'] }),
+        queryClient.invalidateQueries({ queryKey: ['course-resources'] }),
+        queryClient.invalidateQueries({ queryKey: ['resource'] }),
+      ]);
       setMessage(action === 'APPROVED' ? 'Resource approved and now publicly available.' : 'Resource rejected. The decision and reason were recorded.');
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not record the moderation decision.'); }
   }

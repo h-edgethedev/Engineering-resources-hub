@@ -14,7 +14,7 @@ interface Course {
   offerings: Array<{ academicSession: { label: string }; semester: { code: string; label: string; programmeLevel: { code: string; label: string | null } } }>;
 }
 interface Resource {
-  id: string; title: string; description: string | null; type: string; createdAt: string;
+  id: string; title: string; description: string | null; type: string; status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'REMOVED'; createdAt: string;
   course: { id: string; code: string; title: string };
   academicSession: { id: string; label: string } | null;
   semester: { id: string; code: string; label: string; programmeLevel: { code: string; label: string | null } } | null;
@@ -121,7 +121,7 @@ export function ResourceDetailPage() {
   return <div className="site-shell"><PublicHeader /><main className="discovery-page detail-page"><Link className="text-link" to="/explore">← Explore</Link>
     {resourceQuery.isPending && <p className="discovery-state" role="status">Loading resource…</p>}
     {resourceQuery.isError && <div className="catalog-message catalog-error" role="alert">{resourceQuery.error.message}</div>}
-    {resource && <><p className="eyebrow">{formatResourceType(resource.type)} · APPROVED RESOURCE</p><h1>{resource.title}</h1><p className="detail-course-code"><Link to={`/courses/${resource.course.id}`}>{resource.course.code} · {resource.course.title}</Link></p>{resource.description && <p className="detail-description">{resource.description}</p>}
+    {resource && <><p className="eyebrow">{formatResourceType(resource.type)} · {resource.status} RESOURCE</p><h1>{resource.title}</h1><p className="detail-course-code"><Link to={`/courses/${resource.course.id}`}>{resource.course.code} · {resource.course.title}</Link></p>{resource.description && <p className="detail-description">{resource.description}</p>}
       <dl className="resource-metadata"><div><dt>Academic session</dt><dd>{resource.academicSession?.label ?? 'Not specified'}</dd></div><div><dt>Level and semester</dt><dd>{resource.semester ? `${resource.semester.programmeLevel.label ?? `${resource.semester.programmeLevel.code} Level`} · ${resource.semester.label}` : 'Not specified'}</dd></div><div><dt>Shared by</dt><dd>{resource.uploader?.displayName ?? 'EngHub community'}<br /><span className="resource-uploader-tag">@{resource.uploader?.profile?.username ?? 'username unavailable'}</span></dd></div></dl>
       <div className="resource-actions"><a className="button button-purple" href={`/api/v1/resources/${resource.id}/file/download`}>Download file</a>{resource.file && <span>{resource.file.originalFilename} · {Math.max(1, Math.round(resource.file.byteSize / 1024))} KB</span>}</div>
       {resource.file?.mediaType === 'application/pdf' && <section className="resource-preview" aria-label="Document preview"><iframe title={`Preview of ${resource.title}`} src={`/api/v1/resources/${resource.id}/file`} /></section>}

@@ -85,7 +85,7 @@ function courseWhere(filters: CourseFilters) {
 
 const courseRelations = {
   programme: { select: { id: true, name: true, slug: true, department: { select: { id: true, name: true, slug: true, faculty: { select: { id: true, name: true, slug: true, university: { select: { id: true, name: true, slug: true } } } } } } } },
-  offerings: { select: { academicSession: { select: { label: true } }, semester: { select: { code: true, label: true, programmeLevel: { select: { code: true, label: true } } } } } },
+  offerings: { select: { academicSession: { select: { id: true, label: true } }, semester: { select: { id: true, code: true, label: true, programmeLevel: { select: { id: true, code: true, label: true } } } } } },
 } as const;
 
 export async function listCourses(filters: CourseFilters) {

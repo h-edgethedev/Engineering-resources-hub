@@ -9,6 +9,10 @@ interface Course {
     name: string;
     department: { name: string };
   };
+  offerings: Array<{
+    academicSession: { id: string; label: string };
+    semester: { id: string; code: string; label: string; programmeLevel: { id: string; code: string; label: string | null } };
+  }>;
 }
 
 interface ApiEnvelope<T> {
@@ -62,6 +66,8 @@ function formatFileSize(bytes: number) {
 export function ResourceSubmission() {
   const coursesQuery = useQuery({ queryKey: ['courses', 'resource-submission', 'university-of-lagos'], queryFn: fetchCourses, staleTime: 5 * 60_000 });
   const [courseId, setCourseId] = useState('');
+  const [academicSessionId, setAcademicSessionId] = useState('');
+  const [semesterId, setSemesterId] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [type, setType] = useState<(typeof resourceTypes)[number][0]>('LECTURE_NOTE');
@@ -70,6 +76,19 @@ export function ResourceSubmission() {
   const [submittedTitle, setSubmittedTitle] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const courses = useMemo(() => coursesQuery.data ?? [], [coursesQuery.data]);
+  const selectedCourse = courses.find((course) => course.id === courseId);
+  const academicSessions = useMemo(() => [...new Map((selectedCourse?.offerings ?? []).map(({ academicSession }) => [academicSession.id, academicSession])).values()], [selectedCourse]);
+  const semesters = useMemo(() => [...new Map((selectedCourse?.offerings ?? []).map(({ semester }) => [semester.id, semester])).values()], [selectedCourse]);
+
+  function chooseAcademicSession(id: string) {
+    setAcademicSessionId(id);
+    if (semesterId && id && !selectedCourse?.offerings.some((offering) => offering.academicSession.id === id && offering.semester.id === semesterId)) setSemesterId('');
+  }
+
+  function chooseSemester(id: string) {
+    setSemesterId(id);
+    if (academicSessionId && id && !selectedCourse?.offerings.some((offering) => offering.academicSession.id === academicSessionId && offering.semester.id === id)) setAcademicSessionId('');
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -99,6 +118,8 @@ export function ResourceSubmission() {
       const csrfBody = (await csrfResponse.json()) as ApiEnvelope<{ csrfToken: string }>;
       const formData = new FormData();
       formData.set('courseId', courseId);
+      if (academicSessionId) formData.set('academicSessionId', academicSessionId);
+      if (semesterId) formData.set('semesterId', semesterId);
       formData.set('title', title.trim());
       formData.set('description', description.trim());
       formData.set('type', type);
@@ -114,6 +135,8 @@ export function ResourceSubmission() {
       setTitle('');
       setDescription('');
       setCourseId('');
+      setAcademicSessionId('');
+      setSemesterId('');
       setType('LECTURE_NOTE');
       setFile(null);
       const input = document.getElementById('resource-file') as HTMLInputElement | null;
@@ -134,12 +157,25 @@ export function ResourceSubmission() {
       {submittedTitle && <div className="submission-success" role="status"><strong>Submitted for review</strong><span>“{submittedTitle}” is saved as pending moderation.</span><button type="button" onClick={() => setSubmittedTitle('')}>Submit another</button></div>}
       <form className="submission-form" onSubmit={handleSubmit}>
         <label>Course
-          <select value={courseId} onChange={(event) => setCourseId(event.target.value)} required disabled={coursesQuery.isPending || courses.length === 0}>
+          <select value={courseId} onChange={(event) => { setCourseId(event.target.value); setAcademicSessionId(''); setSemesterId(''); }} required disabled={coursesQuery.isPending || courses.length === 0}>
             <option value="">{coursesQuery.isPending ? 'Loading courses…' : courses.length ? 'Choose a course' : 'No courses available'}</option>
             {courses.map((course) => <option key={course.id} value={course.id}>{course.code} · {course.title} — {course.programme.department.name}</option>)}
           </select>
         </label>
         {coursesQuery.isError && <p className="auth-error" role="alert">{coursesQuery.error.message} <button className="inline-button" type="button" onClick={() => void coursesQuery.refetch()}>Try again</button></p>}
+        {courses.length > 0 && <label>Academic session <span className="optional-label">Optional</span>
+          <select value={academicSessionId} onChange={(event) => chooseAcademicSession(event.target.value)} disabled={!selectedCourse?.offerings.length}>
+            <option value="">Not specified</option>
+            {academicSessions.map((session) => <option key={session.id} value={session.id}>{session.label}</option>)}
+          </select>
+        </label>}
+        {courses.length > 0 && <label>Level and semester <span className="optional-label">Optional</span>
+          <select value={semesterId} onChange={(event) => chooseSemester(event.target.value)} disabled={!selectedCourse?.offerings.length}>
+            <option value="">Not specified</option>
+            {semesters.map((semester) => <option key={semester.id} value={semester.id}>{semester.programmeLevel.label ?? `${semester.programmeLevel.code} Level`} · {semester.label}</option>)}
+          </select>
+          {!selectedCourse?.offerings.length && <span className="field-hint">No session or semester offerings are listed for this course yet.</span>}
+        </label>}
         {courses.length > 0 && <label>Resource title<input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={250} required placeholder="e.g. Week 4 lecture notes" /></label>}
         {courses.length > 0 && <label>Material type<select value={type} onChange={(event) => setType(event.target.value as (typeof resourceTypes)[number][0])}>{resourceTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>}
         {courses.length > 0 && <label>Description <span className="optional-label">Optional</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} maxLength={10_000} rows={4} placeholder="Add context that helps students understand this material." /></label>}

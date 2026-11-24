@@ -96,7 +96,7 @@ export async function listResources(query: ListResourcesQuery, actor?: AuthConte
       { course: { code: { contains: q, mode: 'insensitive' as const } } },
       { course: { title: { contains: q, mode: 'insensitive' as const } } },
     ] } : {}),
-    ...(isSuperAdmin ? (status ? { status } : {}) : {}),
+    ...((status || (!mine && !reviewQueue)) ? { status: status ?? 'APPROVED' as const } : {}),
     AND: [
       ...(!isSuperAdmin ? [{ OR: visibility }] : []),
       ...(mine && actor ? [{ uploadedById: actor.user.id }] : []),
