@@ -1,6 +1,14 @@
 # Session notes
 
-Updated: 2026-11-21
+Updated: 2026-11-25
+
+## Cloudflare R2 storage adapter (2026-11-25)
+
+- Added optional Cloudflare R2 object storage through the AWS S3-compatible SDK. Local filesystem storage remains the default; R2 configuration is validated at API startup when selected.
+- Kept the R2 bucket private and routed reads and writes through the API so existing resource authorization remains enforced. File reads, replacement, restore, and Trash purge now resolve the provider recorded on each file, allowing local and R2 records to coexist.
+- Added `npm run storage:migrate-r2 --workspace @erh/api` to copy local files to R2 sequentially, verify byte counts and SHA-256 checksums, update file/purge metadata transactionally, and retain local source copies for rollback.
+- Added R2 setup and migration instructions in `docs/STORAGE.md`; updated architecture, API, README, and project context.
+- API typecheck/build and `git diff --check` pass. R2 was not configured in this environment, so live bucket integration remains unverified. Malware scanning and failed-upload cleanup remain future production hardening.
 
 ## Resource API milestone
 

@@ -2,7 +2,7 @@
 
 An open-source academic resource platform launching at the University of Lagos (UNILAG). The initial departments are Computer Engineering and Electrical and Electronics Engineering within the Faculty of Engineering. The project owner will validate course data before it is added.
 
-The platform is being built incrementally. The current implementation includes the UNILAG academic API, local file uploads, moderation and role authorization, email-verified accounts, and a web resource submission flow. The moderation queue UI, search, account recovery, and cloud storage remain in progress.
+The platform is being built incrementally. The current implementation includes the UNILAG academic API, local file uploads with optional Cloudflare R2 storage, moderation and governance workflows, role authorization, email-verified accounts, public course/resource discovery, and web resource submission. Account recovery and malware scanning remain in progress.
 
 ## Requirements
 
@@ -62,8 +62,9 @@ The API health endpoint is `http://localhost:4000/health`; the web app runs at `
 - [Architecture](docs/ARCHITECTURE.md)
 - [Database design](docs/DATABASE_DESIGN.md)
 - [API documentation](docs/API_DOCUMENTATION.md)
+- [Resource file storage](docs/STORAGE.md)
 - [MIT License](LICENSE) (applies to software, not uploaded academic documents)
 
 ## Current milestone
 
-The web app supports registration with email verification, login, account sessions, and submissions from Students, Contributors, and Super Administrators. In development, verification links appear in the API console unless SMTP is configured. Production requires `EMAIL_SMTP_URL` and `EMAIL_FROM`. The moderator review queue is the next planned web workflow. See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for the development workflow.
+The web app supports public discovery, registration with email verification, login, account sessions, resource submissions, moderation queues, and resource governance. In development, verification links appear in the API console unless SMTP is configured. Production requires `EMAIL_SMTP_URL` and `EMAIL_FROM`. See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for the development workflow.

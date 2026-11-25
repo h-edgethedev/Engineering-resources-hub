@@ -1,6 +1,6 @@
 import { ApiError } from '../../errors/ApiError.js';
 import { prisma } from '../../infrastructure/database.js';
-import { resourceStorage } from './storage.js';
+import { getResourceStorage, resourceStorage } from './storage.js';
 import type { Express } from 'express';
 import { open } from 'node:fs/promises';
 import { basename, extname } from 'node:path';
@@ -236,9 +236,9 @@ export async function findResourceFile(resourceId: string, actor?: AuthContext) 
     select: { ...scopeSelect, file: { select: { provider: true, storageKey: true, originalFilename: true, mediaType: true } } },
   });
   if (!resource || !canViewResource(resource as ResourceScopeRecord, actor)) throw new ApiError(404, 'RESOURCE_NOT_FOUND', 'Resource was not found.');
-  if (!resource.file || resource.file.provider !== resourceStorage.provider) throw new ApiError(404, 'RESOURCE_FILE_NOT_FOUND', 'The resource file was not found.');
+  if (!resource.file) throw new ApiError(404, 'RESOURCE_FILE_NOT_FOUND', 'The resource file was not found.');
   try {
-    return { ...resource.file, stream: await resourceStorage.get(resource.file.storageKey) };
+    return { ...resource.file, stream: await getResourceStorage(resource.file.provider).get(resource.file.storageKey) };
   } catch (error) {
     if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') {
       throw new ApiError(404, 'RESOURCE_FILE_NOT_FOUND', 'The resource file was not found.');

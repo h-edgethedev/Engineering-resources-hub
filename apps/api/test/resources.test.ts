@@ -30,7 +30,7 @@ const storage = vi.hoisted(() => ({
 }));
 
 vi.mock('../src/infrastructure/database.js', () => ({ prisma: db }));
-vi.mock('../src/modules/resources/storage.js', () => ({ resourceStorage: storage }));
+vi.mock('../src/modules/resources/storage.js', () => ({ resourceStorage: storage, getResourceStorage: vi.fn(() => storage) }));
 
 const { createApp } = await import('../src/app.js');
 const servers: Server[] = [];

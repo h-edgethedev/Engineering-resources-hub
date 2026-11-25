@@ -45,7 +45,7 @@ Business authorization belongs in API middleware and service checks, with resour
 
 ### Resource file workflow
 
-The storage interface should expose operations such as `createUpload`, `verifyObject`, `createReadAccess` and `deleteObject`. The local provider can accept multipart uploads and write under an ignored local data directory. Production R2 should use short-lived presigned URLs so file bytes go directly between browser and object storage.
+The storage interface currently provides `put`, `get` and `delete`. Local filesystem storage is the development default; the Cloudflare R2 adapter uses the S3-compatible API and keeps bucket access private. The API continues to authorize and proxy file bytes, which keeps existing moderation and ownership checks in force. Short-lived presigned URLs may be added later to reduce API bandwidth, with a separate authorization design for pending and quarantined resources.
 
 For either provider, the API first validates user, metadata and upload policy, reserves a unique key, then verifies the object before committing the resource record as pending. Failures should clean up unreferenced objects or mark the reservation for retryable cleanup. Approved resources alone receive public read access. Pending and rejected content stays private. A production launch requires a concrete malware scanning and quarantine strategy; a PDF signature check is not malware scanning.
 
@@ -59,7 +59,7 @@ For either provider, the API first validates user, metadata and upload policy, r
 | Database | PostgreSQL + Prisma | Relational data, migrations and queries |
 | Authentication | Opaque server-side sessions in HTTP-only cookies | Revocation and role checks remain server-controlled |
 | Development files | Local filesystem adapter | Ignored local upload directory; never committed |
-| Production files | Cloudflare R2 via S3-compatible SDK | Private bucket and short-lived presigned operations |
+| Production files | Cloudflare R2 via S3-compatible SDK | Private bucket; API-authorized streaming |
 | Search | PostgreSQL indexes and text search initially | Search module isolates implementation for later evolution |
 | API reference | OpenAPI/Swagger | Generated or maintained from API contracts |
 

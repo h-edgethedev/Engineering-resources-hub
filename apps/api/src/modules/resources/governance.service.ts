@@ -4,7 +4,7 @@ import { prisma } from '../../infrastructure/database.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { hasRole, hasRoleInUniversity } from '../auth/auth.middleware.js';
 import type { AuthContext } from '../auth/auth.types.js';
-import { resourceStorage } from './storage.js';
+import { getResourceStorage, resourceStorage } from './storage.js';
 import type { UpdateResourceInput } from './resource.schemas.js';
 import type { Express } from 'express';
 import { basename } from 'node:path';
@@ -118,8 +118,8 @@ export async function replaceResourceFile(resourceId: string, file: Express.Mult
       await tx.moderationAction.create({ data: { resourceId, resourceIdSnapshot: resourceId, actorId: actor.user.id, action: 'RESUBMITTED', reason: 'File replaced by Super Admin.' } });
       return result;
     });
-    if (resource.file?.provider === resourceStorage.provider) {
-      try { await resourceStorage.delete(resource.file.storageKey); }
+    if (resource.file) {
+      try { await getResourceStorage(resource.file.provider).delete(resource.file.storageKey); }
       catch (error) { console.error('Unable to delete the replaced resource file; orphan cleanup is required.', error); }
     }
     return updated;
@@ -313,8 +313,7 @@ export async function restoreResource(resourceId: string, actor: AuthContext) {
   const purgeJob = resource.trashGeneration ? await prisma.resourcePurgeJob.findUnique({ where: { trashGenerationSnapshot: resource.trashGeneration } }) : null;
   if (purgeJob && ['PROCESSING', 'COMPLETE'].includes(purgeJob.status)) throw new ApiError(409, 'PURGE_IN_PROGRESS', 'This resource has entered permanent deletion and cannot be restored.');
   if (resource.file) {
-    if (resource.file.provider !== resourceStorage.provider) throw new ApiError(409, 'RESOURCE_FILE_UNAVAILABLE', 'This resource uses a storage provider unavailable in this environment.');
-    try { const storedFile = await resourceStorage.get(resource.file.storageKey); storedFile.destroy(); } catch { throw new ApiError(409, 'RESOURCE_FILE_UNAVAILABLE', 'The stored file is unavailable, so this resource cannot be restored.'); }
+    try { const storedFile = await getResourceStorage(resource.file.provider).get(resource.file.storageKey); storedFile.destroy(); } catch { throw new ApiError(409, 'RESOURCE_FILE_UNAVAILABLE', 'The stored file is unavailable, so this resource cannot be restored.'); }
   }
   if (!resource.file) throw new ApiError(409, 'RESOURCE_FILE_UNAVAILABLE', 'The stored file is missing, so this resource cannot be restored.');
   const course = await prisma.course.findFirst({ where: { id: resource.courseId, status: 'ACTIVE' }, select: { id: true } });
@@ -402,8 +401,7 @@ export async function processPurgeJob(jobId: string) {
   if (!claimed.count) return prisma.resourcePurgeJob.findUnique({ where: { id: jobId } });
   const current = await prisma.resourcePurgeJob.findUniqueOrThrow({ where: { id: jobId } });
   try {
-    if (current.provider !== 'none' && current.provider !== resourceStorage.provider) throw new Error(`Storage provider "${current.provider}" is not available for purge.`);
-    if (current.provider !== 'none') await resourceStorage.delete(current.storageKey);
+    if (current.provider !== 'none') await getResourceStorage(current.provider).delete(current.storageKey);
     await prisma.$transaction(async (tx) => {
       const deleted = await tx.resource.deleteMany({ where: { id: current.resourceIdSnapshot, trashedAt: { not: null }, trashGeneration: current.trashGenerationSnapshot } });
       if (deleted.count !== 1) throw new Error('Resource state changed before purge could complete.');
