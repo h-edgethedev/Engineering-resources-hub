@@ -1,7 +1,8 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { PublicHeader } from './PublicHeader';
+import { PdfFirstPagePreview } from './PdfFirstPagePreview';
 import { useAuth } from './auth';
 
 interface Envelope<T> { data: T; meta?: { page: number; pageSize: number; total: number; totalPages: number }; }
@@ -41,6 +42,28 @@ export function ExplorePage() {
   const q = params.get('q')?.trim() ?? '';
   const typeFilter = params.get('type') ?? '';
   const page = Math.max(1, Number(params.get('page') ?? 1));
+
+  useEffect(() => {
+    setQuery(params.get('q') ?? '');
+    setType(params.get('type') ?? '');
+  }, [params]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      const next = new URLSearchParams(params);
+      const trimmedQuery = query.trim();
+
+      if (trimmedQuery) next.set('q', trimmedQuery);
+      else next.delete('q');
+      next.delete('page');
+
+      const currentQuery = params.get('q')?.trim() ?? '';
+      if (trimmedQuery !== currentQuery) setParams(next, { replace: true });
+    }, 400);
+
+    return () => window.clearTimeout(timeout);
+  }, [query, params, setParams]);
+
   const coursesQuery = useQuery({
     queryKey: ['discovery', 'courses', q, page],
     queryFn: () => api<Course[]>(`/courses?page=${page}&pageSize=12${q ? `&q=${encodeURIComponent(q)}` : ''}`),
@@ -59,18 +82,25 @@ export function ExplorePage() {
     const next = new URLSearchParams();
     if (query.trim()) next.set('q', query.trim());
     if (type) next.set('type', type);
-    setParams(next);
+    setParams(next, { replace: true });
   }
   function changePage(nextPage: number) {
     const next = new URLSearchParams(params);
     nextPage > 1 ? next.set('page', String(nextPage)) : next.delete('page');
     setParams(next);
   }
+  function clearSearch() {
+    setQuery('');
+    const next = new URLSearchParams(params);
+    next.delete('q');
+    next.delete('page');
+    setParams(next, { replace: true });
+  }
   const courses = coursesQuery.data?.data ?? [];
   const resources = resourcesQuery.data?.data ?? [];
   return <div className="site-shell"><PublicHeader /><main className="discovery-page">
     <div className="discovery-heading"><p className="eyebrow">OPEN ACADEMIC DISCOVERY</p><h1>Explore courses and resources</h1><p>Search course codes, titles, and approved learning materials.</p></div>
-    <form className="discovery-controls" onSubmit={submit} role="search"><label className="discovery-search"><span className="sr-only">Search courses and resources</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Try a course code, topic, or resource title" /><button className="button button-purple" type="submit">Search</button></label>
+    <form className="discovery-controls" onSubmit={submit} role="search"><label className="discovery-search"><span className="sr-only">Search courses and resources</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Try a course code, topic, or resource title" />{query && <button className="discovery-clear" type="button" onClick={clearSearch} aria-label="Clear search">×</button>}</label>
       <label className="resource-type-filter">Resource type <select value={type} onChange={(event) => { setType(event.target.value); const next = new URLSearchParams(params); event.target.value ? next.set('type', event.target.value) : next.delete('type'); next.delete('page'); setParams(next); }}><option value="">All types</option><option value="LECTURE_NOTE">Lecture notes</option><option value="TEXTBOOK">Textbooks</option><option value="PAST_QUESTION">Past questions</option><option value="SOLUTION">Solutions</option><option value="LAB_MANUAL">Lab manuals</option><option value="PROGRAMMING_EXERCISE">Programming exercises</option><option value="OTHER">Other</option></select></label>
     </form>
     {(coursesQuery.isError || resourcesQuery.isError) && <div className="catalog-message catalog-error" role="alert">{coursesQuery.error?.message ?? resourcesQuery.error?.message}<button onClick={() => { void coursesQuery.refetch(); void resourcesQuery.refetch(); }}>Try again</button></div>}
@@ -97,11 +127,13 @@ export function CourseDetailPage() {
   const { courseId = '' } = useParams();
   const [resourceType, setResourceType] = useState('');
   const courseQuery = useQuery({ queryKey: ['course', courseId], queryFn: async () => (await api<Course>(`/courses/${courseId}`)).data, enabled: Boolean(courseId) });
-  const resourcesQuery = useQuery({ queryKey: ['course-resources', courseId, resourceType], queryFn: async () => {
-    const search = new URLSearchParams({ courseId, page: '1', pageSize: '100' });
-    if (resourceType) search.set('type', resourceType);
-    return (await api<Resource[]>(`/resources?${search.toString()}`)).data;
-  }, enabled: Boolean(courseId) });
+  const resourcesQuery = useQuery({
+    queryKey: ['course-resources', courseId, resourceType], queryFn: async () => {
+      const search = new URLSearchParams({ courseId, page: '1', pageSize: '100' });
+      if (resourceType) search.set('type', resourceType);
+      return (await api<Resource[]>(`/resources?${search.toString()}`)).data;
+    }, enabled: Boolean(courseId)
+  });
   const course = courseQuery.data;
   return <div className="site-shell"><PublicHeader /><main className="discovery-page detail-page"><Link className="text-link" to="/explore">← Explore</Link>
     {courseQuery.isPending && <p className="discovery-state" role="status">Loading course…</p>}
@@ -143,7 +175,7 @@ export function ResourceDetailPage() {
       <dl className="resource-metadata"><div><dt>Academic session</dt><dd>{resource.academicSession?.label ?? 'Not specified'}</dd></div><div><dt>Level and semester</dt><dd>{resource.semester ? `${resource.semester.programmeLevel.label ?? `${resource.semester.programmeLevel.code} Level`} · ${resource.semester.label}` : 'Not specified'}</dd></div><div><dt>Shared by</dt><dd>{resource.uploader?.displayName ?? 'EngHub community'}<br /><span className="resource-uploader-tag">@{resource.uploader?.profile?.username ?? 'username unavailable'}</span></dd></div></dl>
       <div className="resource-actions"><a className="button button-purple" href={`/api/v1/resources/${resource.id}/file/download`}>Download file</a>{resource.file && <span>{resource.file.originalFilename} · {Math.max(1, Math.round(resource.file.byteSize / 1024))} KB</span>}</div>
       {user && resource.status === 'APPROVED' && <section className="resource-report"><button type="button" className="text-link" onClick={() => setReportOpen((value) => !value)}>{reportOpen ? 'Close report form' : 'Report a problem with this resource'}</button>{reportMessage && <p role="status">{reportMessage}</p>}{reportOpen && <form className="governance-edit-form" onSubmit={(event) => void submitReport(event)}><label>Issue type<select value={reportCategory} onChange={(event) => setReportCategory(event.target.value)}><option value="BROKEN_FILE">File is broken or unreadable</option><option value="WRONG_CONTENT">Wrong course or content</option><option value="COPYRIGHT">Copyright concern</option><option value="PRIVACY">Privacy concern</option><option value="INAPPROPRIATE">Inappropriate content</option><option value="OTHER">Other</option></select></label><label>Details<textarea required minLength={1} maxLength={2000} rows={3} value={reportExplanation} onChange={(event) => setReportExplanation(event.target.value)} /></label>{reportError && <p className="auth-error" role="alert">{reportError}</p>}<button className="button button-purple" type="submit">Send report</button></form>}</section>}
-      {resource.file?.mediaType === 'application/pdf' && <section className="resource-preview" aria-label="Document preview"><iframe title={`Preview of ${resource.title}`} src={`/api/v1/resources/${resource.id}/file`} /></section>}
+      {resource.file?.mediaType === 'application/pdf' && <section className="resource-preview" aria-label="Document preview"><PdfFirstPagePreview title={resource.title} src={`/api/v1/resources/${resource.id}/file`} /></section>}
       {resource.file?.mediaType === 'text/plain' && <section className="resource-preview"><iframe title={`Preview of ${resource.title}`} src={`/api/v1/resources/${resource.id}/file`} /></section>}
     </>}
   </main></div>;
