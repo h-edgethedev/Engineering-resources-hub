@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { PublicHeader } from './PublicHeader';
 import { PdfFirstPagePreview } from './PdfFirstPagePreview';
@@ -16,7 +16,7 @@ interface Course {
   offerings: Array<{ academicSession: { label: string }; semester: { code: string; label: string; programmeLevel: { code: string; label: string | null } } }>;
 }
 interface Resource {
-  id: string; title: string; description: string | null; type: string; status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'REMOVED'; createdAt: string;
+  id: string; title: string; description: string | null; type: string; status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'REMOVED'; createdAt: string; quarantinedAt?: string | null;
   course: { id: string; code: string; title: string };
   academicSession: { id: string; label: string } | null;
   semester: { id: string; code: string; label: string; programmeLevel: { code: string; label: string | null } } | null;
@@ -150,13 +150,52 @@ export function CourseDetailPage() {
 export function ResourceDetailPage() {
   const { resourceId = '' } = useParams();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [reportOpen, setReportOpen] = useState(false);
   const [reportCategory, setReportCategory] = useState('WRONG_CONTENT');
   const [reportExplanation, setReportExplanation] = useState('');
   const [reportMessage, setReportMessage] = useState('');
   const [reportError, setReportError] = useState('');
+  const [governanceOpen, setGovernanceOpen] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [governanceMessage, setGovernanceMessage] = useState('');
+  const [governanceError, setGovernanceError] = useState('');
+  const canGovern = user?.roleAssignments.some((grant) => grant.role === 'SUPER_ADMIN' || grant.role === 'MODERATOR') ?? false;
   const resourceQuery = useQuery({ queryKey: ['resource', resourceId], queryFn: async () => (await api<Resource>(`/resources/${resourceId}`)).data, enabled: Boolean(resourceId) });
   const resource = resourceQuery.data;
+  async function governanceRequest(path: string, method: string, body: Record<string, unknown>) {
+    const csrfResponse = await fetch('/api/v1/auth/csrf', { credentials: 'include' });
+    if (!csrfResponse.ok) throw new Error('Your sign-in session may have expired. Sign in again and retry.');
+    const csrfBody = await csrfResponse.json() as { data: { csrfToken: string } };
+    const response = await fetch(`/api/v1/resources/${resourceId}${path}`, { method, credentials: 'include', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfBody.data.csrfToken }, ...(method === 'PATCH' || method === 'POST' ? { body: JSON.stringify(body) } : {}) });
+    if (!response.ok) {
+      const result = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+      throw new Error(result?.error?.message ?? 'Could not update this resource.');
+    }
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['resource', resourceId] }),
+      queryClient.invalidateQueries({ queryKey: ['discovery', 'resources'] }),
+      queryClient.invalidateQueries({ queryKey: ['course-resources'] }),
+      queryClient.invalidateQueries({ queryKey: ['landing-resources'] }),
+    ]);
+  }
+  async function saveResourceEdits(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setGovernanceError(''); setGovernanceMessage('');
+    try {
+      await governanceRequest('', 'PATCH', { title: editTitle.trim(), description: editDescription.trim() || null });
+      setGovernanceOpen(false); setGovernanceMessage('Resource details updated.');
+    } catch (error) { setGovernanceError(error instanceof Error ? error.message : 'Could not update this resource.'); }
+  }
+  async function quarantineResource() {
+    const reason = window.prompt('Reason for quarantining this resource:');
+    if (!reason?.trim()) return;
+    setGovernanceError(''); setGovernanceMessage('');
+    try {
+      await governanceRequest('/quarantine', 'POST', { reason: reason.trim() });
+      setGovernanceMessage('Resource quarantined and hidden from public discovery.');
+    } catch (error) { setGovernanceError(error instanceof Error ? error.message : 'Could not quarantine this resource.'); }
+  }
   async function submitReport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setReportError(''); setReportMessage('');
     try {
@@ -174,6 +213,7 @@ export function ResourceDetailPage() {
     {resource && <><p className="eyebrow">{formatResourceType(resource.type)} · {resource.status} RESOURCE</p><h1>{resource.title}</h1><p className="detail-course-code"><Link to={`/courses/${resource.course.id}`}>{resource.course.code} · {resource.course.title}</Link></p>{resource.description && <p className="detail-description">{resource.description}</p>}
       <dl className="resource-metadata"><div><dt>Academic session</dt><dd>{resource.academicSession?.label ?? 'Not specified'}</dd></div><div><dt>Level and semester</dt><dd>{resource.semester ? `${resource.semester.programmeLevel.label ?? `${resource.semester.programmeLevel.code} Level`} · ${resource.semester.label}` : 'Not specified'}</dd></div><div><dt>Shared by</dt><dd>{resource.uploader?.displayName ?? 'EngHub community'}<br /><span className="resource-uploader-tag">@{resource.uploader?.profile?.username ?? 'username unavailable'}</span></dd></div></dl>
       <div className="resource-actions"><a className="button button-purple" href={`/api/v1/resources/${resource.id}/file/download`}>Download file</a>{resource.file && <span>{resource.file.originalFilename} · {Math.max(1, Math.round(resource.file.byteSize / 1024))} KB</span>}</div>
+      {canGovern && <section className="resource-governance-tools" aria-label="Resource moderation tools"><div className="resource-governance-heading"><div><p className="card-kicker">MODERATION TOOLS</p><strong>Manage this resource</strong></div><div className="resource-governance-actions">{!resource.quarantinedAt && resource.status !== 'REMOVED' && <button className="button button-outline" type="button" onClick={() => void quarantineResource()}>Quarantine resource</button>}<button className="button button-outline" type="button" onClick={() => { setEditTitle(resource.title); setEditDescription(resource.description ?? ''); setGovernanceOpen((value) => !value); setGovernanceError(''); }}>{governanceOpen ? 'Close editor' : 'Edit details'}</button></div></div>{resource.quarantinedAt && <p className="field-hint">This resource is quarantined and hidden from public discovery.</p>}{governanceMessage && <p className="submission-success" role="status">{governanceMessage}</p>}{governanceError && <p className="auth-error" role="alert">{governanceError}</p>}{governanceOpen && <form className="governance-edit-form" onSubmit={(event) => void saveResourceEdits(event)}><label>Resource title<input value={editTitle} maxLength={250} required onChange={(event) => setEditTitle(event.target.value)} /></label><label>Description <span className="optional-label">Optional</span><textarea value={editDescription} maxLength={10_000} rows={4} onChange={(event) => setEditDescription(event.target.value)} /></label><button className="button button-purple" type="submit">Save changes</button></form>}</section>}
       {user && resource.status === 'APPROVED' && <section className="resource-report"><button type="button" className="text-link" onClick={() => setReportOpen((value) => !value)}>{reportOpen ? 'Close report form' : 'Report a problem with this resource'}</button>{reportMessage && <p role="status">{reportMessage}</p>}{reportOpen && <form className="governance-edit-form" onSubmit={(event) => void submitReport(event)}><label>Issue type<select value={reportCategory} onChange={(event) => setReportCategory(event.target.value)}><option value="BROKEN_FILE">File is broken or unreadable</option><option value="WRONG_CONTENT">Wrong course or content</option><option value="COPYRIGHT">Copyright concern</option><option value="PRIVACY">Privacy concern</option><option value="INAPPROPRIATE">Inappropriate content</option><option value="OTHER">Other</option></select></label><label>Details<textarea required minLength={1} maxLength={2000} rows={3} value={reportExplanation} onChange={(event) => setReportExplanation(event.target.value)} /></label>{reportError && <p className="auth-error" role="alert">{reportError}</p>}<button className="button button-purple" type="submit">Send report</button></form>}</section>}
       {resource.file?.mediaType === 'application/pdf' && <section className="resource-preview" aria-label="Document preview"><PdfFirstPagePreview title={resource.title} src={`/api/v1/resources/${resource.id}/file`} /></section>}
       {resource.file?.mediaType === 'text/plain' && <section className="resource-preview"><iframe title={`Preview of ${resource.title}`} src={`/api/v1/resources/${resource.id}/file`} /></section>}

@@ -35,7 +35,7 @@ export const verifyEmailController: RequestHandler = async (request, response, n
     const userId = await verifyEmailAddress(parsed.data.token);
     const user = await prisma.user.findUniqueOrThrow({
       where: { id: userId },
-      select: { id: true, email: true, displayName: true, status: true, roleAssignments: { select: { id: true, role: true, universityId: true, scopeKey: true } } },
+      select: { id: true, email: true, displayName: true, status: true, roleAssignments: { select: { id: true, role: true, universityId: true, scopeKey: true, createdAt: true } } },
     });
     const session = await createSession(userId);
     response.append('Set-Cookie', makeSessionCookies(session.token, session.csrfToken, Math.floor(sessionLifetimeMs / 1000)));

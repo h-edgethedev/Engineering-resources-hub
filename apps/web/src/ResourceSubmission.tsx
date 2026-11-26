@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 export interface Course {
@@ -66,6 +66,10 @@ function formatFileSize(bytes: number) {
 export function ResourceSubmission() {
   const coursesQuery = useQuery({ queryKey: ['courses', 'resource-submission', 'university-of-lagos'], queryFn: () => fetchCourses(), staleTime: 5 * 60_000 });
   const [courseId, setCourseId] = useState('');
+  const [courseSearch, setCourseSearch] = useState('');
+  const [courseMenuOpen, setCourseMenuOpen] = useState(false);
+  const [activeCourseIndex, setActiveCourseIndex] = useState(0);
+  const coursePickerRef = useRef<HTMLDivElement>(null);
   const [academicSessionId, setAcademicSessionId] = useState('');
   const [semesterId, setSemesterId] = useState('');
   const [title, setTitle] = useState('');
@@ -77,6 +81,11 @@ export function ResourceSubmission() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const courses = useMemo(() => coursesQuery.data ?? [], [coursesQuery.data]);
   const selectedCourse = courses.find((course) => course.id === courseId);
+  const filteredCourses = useMemo(() => {
+    const query = courseSearch.trim().toLocaleLowerCase();
+    if (!query) return courses;
+    return courses.filter((course) => `${course.code} ${course.title} ${course.programme.name} ${course.programme.department.name}`.toLocaleLowerCase().includes(query));
+  }, [courseSearch, courses]);
   const academicSessions = useMemo(() => [...new Map((selectedCourse?.offerings ?? []).map(({ academicSession }) => [academicSession.id, academicSession])).values()], [selectedCourse]);
   const semesters = useMemo(() => [...new Map((selectedCourse?.offerings ?? []).map(({ semester }) => [semester.id, semester])).values()], [selectedCourse]);
 
@@ -90,9 +99,40 @@ export function ResourceSubmission() {
     if (academicSessionId && id && !selectedCourse?.offerings.some((offering) => offering.academicSession.id === academicSessionId && offering.semester.id === id)) setAcademicSessionId('');
   }
 
+  function selectCourse(course: Course) {
+    setCourseId(course.id);
+    setCourseSearch('');
+    setCourseMenuOpen(false);
+    setActiveCourseIndex(0);
+    setAcademicSessionId('');
+    setSemesterId('');
+  }
+
+  function handleCourseKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setCourseMenuOpen(true);
+      setActiveCourseIndex((index) => Math.min(index + 1, Math.max(filteredCourses.length - 1, 0)));
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setCourseMenuOpen(true);
+      setActiveCourseIndex((index) => Math.max(index - 1, 0));
+    } else if (event.key === 'Enter' && courseMenuOpen && filteredCourses[activeCourseIndex]) {
+      event.preventDefault();
+      selectCourse(filteredCourses[activeCourseIndex]);
+    } else if (event.key === 'Escape') {
+      setCourseMenuOpen(false);
+      setCourseSearch('');
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
+    if (!courseId) {
+      setError('Choose a course for this resource.');
+      return;
+    }
     if (!file) {
       setError('Choose a file to upload.');
       return;
@@ -135,6 +175,7 @@ export function ResourceSubmission() {
       setTitle('');
       setDescription('');
       setCourseId('');
+      setCourseSearch('');
       setAcademicSessionId('');
       setSemesterId('');
       setType('LECTURE_NOTE');
@@ -156,12 +197,17 @@ export function ResourceSubmission() {
       </div>
       {submittedTitle && <div className="submission-success" role="status"><strong>Submitted for review</strong><span>“{submittedTitle}” is saved as pending moderation.</span><button type="button" onClick={() => setSubmittedTitle('')}>Submit another</button></div>}
       <form className="submission-form" onSubmit={handleSubmit}>
-        <label>Course
-          <select value={courseId} onChange={(event) => { setCourseId(event.target.value); setAcademicSessionId(''); setSemesterId(''); }} required disabled={coursesQuery.isPending || courses.length === 0}>
-            <option value="">{coursesQuery.isPending ? 'Loading courses…' : courses.length ? 'Choose a course' : 'No courses available'}</option>
-            {courses.map((course) => <option key={course.id} value={course.id}>{course.code} · {course.title} — {course.programme.department.name}</option>)}
-          </select>
-        </label>
+        <div className="course-picker-field">
+          <label htmlFor="resource-course-search">Course</label>
+          <div className="course-picker" ref={coursePickerRef}>
+            <input id="resource-course-search" role="combobox" aria-autocomplete="list" aria-expanded={courseMenuOpen} aria-controls="resource-course-options" aria-activedescendant={courseMenuOpen && filteredCourses[activeCourseIndex] ? `resource-course-option-${filteredCourses[activeCourseIndex].id}` : undefined} value={courseMenuOpen ? courseSearch : selectedCourse ? `${selectedCourse.code} · ${selectedCourse.title}` : ''} onFocus={() => { setCourseMenuOpen(true); setCourseSearch(''); }} onChange={(event) => { setCourseSearch(event.target.value); setActiveCourseIndex(0); setCourseMenuOpen(true); }} onKeyDown={handleCourseKeyDown} onBlur={(event) => { if (!coursePickerRef.current?.contains(event.relatedTarget as Node | null)) { setCourseMenuOpen(false); setCourseSearch(''); } }} placeholder={coursesQuery.isPending ? 'Loading courses…' : coursesQuery.isError ? 'Courses could not be loaded' : courses.length ? 'Search by course code, title, or department…' : 'No courses available'} disabled={coursesQuery.isPending || courses.length === 0} autoComplete="off" />
+            <span className="course-picker-chevron" aria-hidden="true">⌄</span>
+            {courseMenuOpen && courses.length > 0 && <div className="course-picker-options" id="resource-course-options" role="listbox" aria-label="Courses">
+              {filteredCourses.length ? filteredCourses.map((course, index) => <button id={`resource-course-option-${course.id}`} className={`course-picker-option${index === activeCourseIndex ? ' is-active' : ''}`} key={course.id} type="button" role="option" aria-selected={course.id === courseId} onMouseDown={(event) => event.preventDefault()} onMouseEnter={() => setActiveCourseIndex(index)} onClick={() => selectCourse(course)}><strong>{course.code}</strong><span>{course.title}</span><small>{course.programme.department.name}</small></button>) : <p className="course-picker-empty">No matching courses. Try another search.</p>}
+            </div>}
+          </div>
+          {courseId && <button className="course-picker-clear" type="button" onClick={() => { setCourseId(''); setCourseSearch(''); setCourseMenuOpen(true); setAcademicSessionId(''); setSemesterId(''); }}>Clear selection</button>}
+        </div>
         {coursesQuery.isError && <p className="auth-error" role="alert">{coursesQuery.error.message} <button className="inline-button" type="button" onClick={() => void coursesQuery.refetch()}>Try again</button></p>}
         {courses.length > 0 && <label>Academic session <span className="optional-label">Optional</span>
           <select value={academicSessionId} onChange={(event) => chooseAcademicSession(event.target.value)} disabled={!selectedCourse?.offerings.length}>

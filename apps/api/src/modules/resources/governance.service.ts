@@ -20,7 +20,7 @@ const resourceInclude = {
   },
   academicSession: { select: { id: true, label: true } },
   semester: { select: { id: true, code: true, label: true, programmeLevel: { select: { id: true, code: true, label: true, programmeId: true } } } },
-  file: { select: { id: true, provider: true, storageKey: true, originalFilename: true, mediaType: true, byteSize: true } },
+  file: { select: { id: true, provider: true, originalFilename: true, mediaType: true, byteSize: true } },
   uploader: { select: { id: true, displayName: true, profile: { select: { username: true } } } },
 } as const;
 const retentionMs = 30 * 24 * 60 * 60 * 1000;

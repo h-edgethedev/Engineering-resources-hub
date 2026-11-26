@@ -21,7 +21,7 @@ export const attachSession: RequestHandler = async (request, _response, next) =>
   try {
     const session = await prisma.authSession.findUnique({
       where: { tokenHash: hashSessionToken(token) },
-      include: { user: { select: { id: true, email: true, displayName: true, status: true, emailVerifiedAt: true, roleAssignments: { select: { id: true, role: true, universityId: true, scopeKey: true } } } } },
+      include: { user: { select: { id: true, email: true, displayName: true, status: true, emailVerifiedAt: true, roleAssignments: { select: { id: true, role: true, universityId: true, scopeKey: true, createdAt: true } } } } },
     });
     if (session && !session.revokedAt && session.expiresAt > new Date() && session.user.status === 'ACTIVE' && session.user.emailVerifiedAt) {
       request.auth = {

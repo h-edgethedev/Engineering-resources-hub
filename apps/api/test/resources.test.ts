@@ -213,6 +213,30 @@ describe('resource management endpoints', () => {
     expect(download.headers.get('content-disposition')).toContain('attachment');
   });
 
+  it('hides quarantined resource files from guests', async () => {
+    db.resource.findUnique.mockResolvedValueOnce({
+      ...resourceScope,
+      status: 'APPROVED',
+      uploadedById: '941e3fa0-122b-11e1-b85c-61cd3cbb3299',
+      trashedAt: null,
+      quarantinedAt: new Date(),
+      quarantinedById: userId,
+      quarantineReason: 'Safety review',
+      file: { provider: 'local', storageKey: 'resources/cpe101/notes.pdf', originalFilename: 'notes.pdf', mediaType: 'application/pdf' },
+    });
+    const response = await request(`/api/v1/resources/${resourceId}/file`, undefined, false);
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({ error: { code: 'RESOURCE_NOT_FOUND' } });
+  });
+
+  it('does not select internal storage keys for public resource payloads', async () => {
+    const response = await request(`/api/v1/resources/${resourceId}`);
+    expect(response.status).toBe(200);
+    const include = db.resource.findUnique.mock.calls.at(-1)?.[0]?.include;
+    expect(include.file.select).not.toHaveProperty('storageKey');
+    expect(include.uploader.select).toEqual({ id: true, displayName: true, profile: { select: { username: true } } });
+  });
+
   it('rejects mismatched content and unsupported media types', async () => {
     const badSignature = await request('/api/v1/resources', { method: 'POST', body: await uploadForm({}, 'notes.pdf', 'not really a PDF') });
     expect(badSignature.status).toBe(415);
@@ -296,6 +320,39 @@ describe('resource management endpoints', () => {
       { quarantinedAt: null },
       { status: 'PENDING' },
     ]);
+  });
+
+  it('limits requested non-approved statuses to the actor\'s own uploads for students', async () => {
+    db.resource.count.mockResolvedValueOnce(0);
+    db.resource.findMany.mockResolvedValueOnce([]);
+    const response = await request('/api/v1/resources?status=REJECTED');
+    expect(response.status).toBe(200);
+    const where = db.resource.findMany.mock.calls[0][0].where;
+    expect(where.status).toBe('REJECTED');
+    expect(where.AND).toEqual(expect.arrayContaining([
+      { OR: [{ status: 'APPROVED' }, { uploadedById: userId }] },
+      { trashedAt: null },
+      { quarantinedAt: null },
+      { status: 'REJECTED' },
+    ]));
+  });
+
+  it('hides other users\' rejected resources from students', async () => {
+    db.resource.findUnique.mockResolvedValueOnce({ ...resourceScope, status: 'REJECTED', uploadedById: '941e3fa0-122b-11e1-b85c-61cd3cbb3299' });
+    const response = await request(`/api/v1/resources/${resourceId}`);
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({ error: { code: 'RESOURCE_NOT_FOUND' } });
+  });
+
+  it('hides rejected resources from moderators outside the resource university', async () => {
+    db.authSession.findUnique.mockResolvedValueOnce({
+      id: 'test-session-id', csrfTokenHash, expiresAt: new Date(Date.now() + 60_000), revokedAt: null,
+      user: { id: '941e3fa0-122b-11e1-b85c-61cd3cbb3218', email: 'moderator@example.test', displayName: 'Moderator', status: 'ACTIVE', emailVerifiedAt: new Date(), roleAssignments: [{ id: 'moderator-role', role: 'MODERATOR', universityId: '941e3fa0-122b-11e1-b85c-61cd3cbb3217', scopeKey: 'university:other' }] },
+    });
+    db.resource.findUnique.mockResolvedValueOnce({ ...resourceScope, status: 'REJECTED' });
+    const response = await request(`/api/v1/resources/${resourceId}`);
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({ error: { code: 'RESOURCE_NOT_FOUND' } });
   });
 
   it('requires a valid CSRF token for signed-in mutations', async () => {
@@ -408,6 +465,19 @@ describe('resource management endpoints', () => {
     expect(response.status).toBe(200);
     expect(db.resource.updateMany.mock.calls[0][0].data).toMatchObject({ status: 'APPROVED', trashedAt: null, trashGeneration: null });
     expect(storage.delete).not.toHaveBeenCalled();
+  });
+
+  it('does not select storage keys in governance resource lists', async () => {
+    db.authSession.findUnique.mockResolvedValueOnce({
+      id: 'test-session-id', csrfTokenHash, expiresAt: new Date(Date.now() + 60_000), revokedAt: null,
+      user: { id: '941e3fa0-122b-11e1-b85c-61cd3cbb3218', email: 'moderator@example.test', displayName: 'Moderator', status: 'ACTIVE', emailVerifiedAt: new Date(), roleAssignments: [{ id: 'moderator-role', role: 'MODERATOR', universityId, scopeKey: `university:${universityId}` }] },
+    });
+    db.resource.count.mockResolvedValueOnce(0);
+    db.resource.findMany.mockResolvedValueOnce([]);
+    const response = await request('/api/v1/resources/governance/trash');
+    expect(response.status).toBe(200);
+    const include = db.resource.findMany.mock.calls[0][0].include;
+    expect(include.file.select).not.toHaveProperty('storageKey');
   });
 
   it('returns actor display names and usernames in resource history', async () => {

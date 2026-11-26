@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useAuth } from './auth';
@@ -11,12 +11,21 @@ const notificationType = (kind: NotificationItem['kind']) => kind === 'RESOURCE_
 export function PublicHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [inboxOpen, setInboxOpen] = useState(false);
+  const [moderatorGrantNotice, setModeratorGrantNotice] = useState<{ id: string; universityId: string | null } | null>(null);
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const isSuperAdmin = user?.roleAssignments.some((assignment) => assignment.role === 'SUPER_ADMIN') ?? false;
   const isUniversityAdmin = user?.roleAssignments.some((assignment) => assignment.role === 'UNIVERSITY_ADMIN') ?? false;
   const isModerator = user?.roleAssignments.some((assignment) => assignment.role === 'MODERATOR') ?? false;
   const canReviewResources = isSuperAdmin || isModerator;
+  useEffect(() => {
+    if (!user) { setModeratorGrantNotice(null); return; }
+    const recentModeratorGrants = user.roleAssignments
+      .filter((assignment) => assignment.role === 'MODERATOR' && Date.now() - new Date(assignment.createdAt).getTime() < 7 * 24 * 60 * 60 * 1000)
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+    const unseenGrant = recentModeratorGrants.find((assignment) => localStorage.getItem(`enghub-moderator-grant-seen:${user.id}:${assignment.id}`) !== 'true');
+    setModeratorGrantNotice(unseenGrant ? { id: unseenGrant.id, universityId: unseenGrant.universityId } : null);
+  }, [user]);
   const inboxQuery = useQuery({
     queryKey: ['governance-inbox', user?.id],
     enabled: canReviewResources,
@@ -45,8 +54,14 @@ export function PublicHeader() {
     } catch { /* Keep the inbox open; the next poll will refresh its state. */ }
   }
 
+  function dismissModeratorGrantNotice() {
+    if (user && moderatorGrantNotice) localStorage.setItem(`enghub-moderator-grant-seen:${user.id}:${moderatorGrantNotice.id}`, 'true');
+    setModeratorGrantNotice(null);
+  }
+
   return (
     <>
+      {moderatorGrantNotice && <aside className="moderator-grant-celebration" role="status" aria-live="polite"><span className="moderator-grant-confetti" aria-hidden="true">✦</span><span className="moderator-grant-emoji" aria-hidden="true">🎉</span><div><strong>You have been granted Moderator Access</strong><span>You can now help review resources{moderatorGrantNotice.universityId ? ' for your assigned university' : ''}.</span></div><button type="button" onClick={dismissModeratorGrantNotice} aria-label="Dismiss Moderator Access notification">×</button></aside>}
       <header className="site-header">
         <div className="header-inner">
           <Link className="brand" to="/" aria-label="Engineering Resources Hub home">

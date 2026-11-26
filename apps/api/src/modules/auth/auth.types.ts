@@ -6,7 +6,7 @@ export interface AuthContext {
     email: string;
     displayName: string;
     status: UserStatus;
-    roleAssignments: Array<{ id: string; role: UserRole; universityId: string | null; scopeKey: string }>;
+    roleAssignments: Array<{ id: string; role: UserRole; universityId: string | null; scopeKey: string; createdAt: Date }>;
   };
   sessionId: string;
   csrfTokenHash: string;

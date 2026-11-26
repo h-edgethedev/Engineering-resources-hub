@@ -147,7 +147,7 @@ export function ResourceGovernancePage() {
 }
 
 function GovernanceSummary({ resource }: { resource: GovernanceResource }) {
-  return <div className="admin-resource-main"><div className="admin-resource-copy"><p className="card-kicker">{resource.status} · {label(resource.type)}</p><h2>{resource.title}</h2><p>{resource.course.code} · {resource.course.title}</p><p className="admin-resource-meta">Submitted by {resource.uploader?.displayName ?? 'Unknown contributor'}{resource.uploader?.profile?.username ? ` · @${resource.uploader.profile.username}` : ''}</p><Link to={`/resources/${resource.id}`}>Open resource details</Link></div><span className={`admin-status admin-status-${resource.status.toLowerCase()}`}>{resource.status}</span></div>;
+  return <div className="admin-resource-main"><div className="admin-resource-copy"><p className="card-kicker">{resource.status} · {label(resource.type)}</p><h2>{resource.title}</h2><p>{resource.course.code} · {resource.course.title}</p><p className="admin-resource-meta">Submitted by {resource.uploader?.displayName ?? 'Unknown contributor'}{resource.uploader?.profile?.username ? ` · @${resource.uploader.profile.username}` : ''}</p><Link className="governance-resource-detail-link" to={`/resources/${resource.id}`}>Open resource details</Link></div><span className={`admin-status admin-status-${resource.status.toLowerCase()}`}>{resource.status}</span></div>;
 }
 
 function GovernanceResourceCard({ resource, superAdmin, onRefresh, onMessage, quarantined = false, onClearQuarantine }: { resource: GovernanceResource; superAdmin: boolean; onRefresh: () => Promise<void>; onMessage: (value: string) => void; quarantined?: boolean; onClearQuarantine?: (resourceId: string) => Promise<void> }) {

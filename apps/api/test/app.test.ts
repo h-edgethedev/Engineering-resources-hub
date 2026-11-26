@@ -71,6 +71,37 @@ describe('API configuration and endpoints', () => {
     expect(JSON.stringify(payload)).not.toContain('private database detail');
   });
 
+  it('sets baseline security headers on API responses', async () => {
+    const response = await request('/health');
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(response.headers.get('x-frame-options')).toBe('DENY');
+    expect(response.headers.get('referrer-policy')).toBe('no-referrer');
+  });
+
+  it('does not reflect untrusted origins in CORS headers', async () => {
+    const response = await request('/health/ready', 'http://evil.example.test');
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('access-control-allow-origin')).not.toBe('http://evil.example.test');
+  });
+
+  it('rejects auth POSTs from untrusted origins before credential checks', async () => {
+    const server = createApp({ databaseHealthCheck: async () => undefined }).listen(0);
+    servers.push(server);
+    await new Promise<void>((resolve, reject) => { server.once('listening', resolve); server.once('error', reject); });
+    const address = server.address() as AddressInfo;
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/v1/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: 'http://evil.example.test' },
+      body: JSON.stringify({ email: 'user@example.test', password: 'password123456' }),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ error: { code: 'ORIGIN_NOT_ALLOWED' } });
+  });
+
   it('validates academic route parameters with Zod', async () => {
     const response = await request('/api/v1/universities/Not_A_Valid_Slug');
 

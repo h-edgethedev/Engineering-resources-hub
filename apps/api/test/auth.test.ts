@@ -49,14 +49,14 @@ const student = {
   roleAssignments: [{ id: 'student-grant', role: 'STUDENT', universityId: null, scopeKey: 'global' }],
 };
 
-async function request(path: string, init?: RequestInit, authenticated = false) {
+async function request(path: string, init?: RequestInit, authenticated = false, csrfHeader?: string | false) {
   const server = createApp({ databaseHealthCheck: async () => undefined }).listen(0);
   servers.push(server);
   await new Promise<void>((resolve, reject) => { server.once('listening', resolve); server.once('error', reject); });
   const headers = new Headers(init?.headers);
   if (authenticated) {
     headers.set('Cookie', `enghub_session=${sessionToken}; enghub_csrf=${csrfToken}`);
-    headers.set('X-CSRF-Token', csrfToken);
+    if (csrfHeader !== false) headers.set('X-CSRF-Token', csrfHeader ?? csrfToken);
   }
   return fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}${path}`, { ...init, headers });
 }
@@ -280,5 +280,72 @@ describe('authentication and role grants', () => {
     });
     const response = await request(`/api/v1/auth/admin/users/${targetUserId}/roles`, json({ role: 'SUPER_ADMIN' }), true);
     expect(response.status).toBe(403);
+  });
+
+  it('denies expired, revoked, and unverified sessions', async () => {
+    const base = { id: 'session-id', csrfTokenHash, expiresAt: new Date(Date.now() + 60_000), revokedAt: null, user: student };
+    db.authSession.findUnique
+      .mockResolvedValueOnce({ ...base, expiresAt: new Date(Date.now() - 60_000) })
+      .mockResolvedValueOnce({ ...base, revokedAt: new Date() })
+      .mockResolvedValueOnce({ ...base, user: { ...student, emailVerifiedAt: null } });
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const response = await request('/api/v1/auth/me', undefined, true);
+      expect(response.status).toBe(401);
+      await expect(response.json()).resolves.toMatchObject({ error: { code: 'AUTHENTICATION_REQUIRED' } });
+    }
+  });
+
+  it('sets hardened session cookies and omits password material from login responses', async () => {
+    const login = await request('/api/v1/auth/login', json({ email: student.email, password }));
+    expect(login.status).toBe(200);
+    const cookies = login.headers.getSetCookie();
+    const sessionCookie = cookies.find((value) => value.startsWith('enghub_session='));
+    const csrfCookie = cookies.find((value) => value.startsWith('enghub_csrf='));
+    expect(sessionCookie).toContain('HttpOnly');
+    expect(sessionCookie).toContain('SameSite=Lax');
+    expect(sessionCookie).toContain('Path=/');
+    expect(csrfCookie).toContain('SameSite=Lax');
+    const body = await login.json();
+    expect(JSON.stringify(body)).not.toContain('passwordHash');
+    expect(JSON.stringify(body)).not.toContain(password);
+  });
+
+  it('requires CSRF for authenticated logout and verification endpoints', async () => {
+    const logoutMissing = await request('/api/v1/auth/logout', { method: 'POST' }, true, false);
+    expect(logoutMissing.status).toBe(403);
+    await expect(logoutMissing.json()).resolves.toMatchObject({ error: { code: 'CSRF_VALIDATION_FAILED' } });
+
+    const logoutWrong = await request('/api/v1/auth/logout', { method: 'POST' }, true, 'wrong-csrf-token');
+    expect(logoutWrong.status).toBe(403);
+
+    const verifyMissing = await request('/api/v1/auth/verify-email', json({ token: 'a'.repeat(40) }), true, false);
+    expect(verifyMissing.status).toBe(403);
+    await expect(verifyMissing.json()).resolves.toMatchObject({ error: { code: 'CSRF_VALIDATION_FAILED' } });
+
+    const resendMissing = await request('/api/v1/auth/resend-verification', json({ email: student.email }), true, false);
+    expect(resendMissing.status).toBe(403);
+    await expect(resendMissing.json()).resolves.toMatchObject({ error: { code: 'CSRF_VALIDATION_FAILED' } });
+  });
+
+  it('allows a signed-in verification request when CSRF is valid', async () => {
+    const token = 'verification-token-value-which-is-long-enough';
+    db.emailVerificationToken.findUnique.mockResolvedValueOnce({
+      id: 'verification-token-id', userId, tokenHash: createHash('sha256').update(token).digest('hex'),
+      expiresAt: new Date(Date.now() + 60_000), usedAt: null,
+    });
+    const response = await request('/api/v1/auth/verify-email', json({ token }), true);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ data: { verified: true } });
+    expect(db.authSession.create).toHaveBeenCalledOnce();
+  });
+
+  it('rotates the CSRF token for signed-in users', async () => {
+    const response = await request('/api/v1/auth/csrf', { method: 'GET' }, true);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.data.csrfToken).toEqual(expect.any(String));
+    expect(body.data.csrfToken).not.toBe(csrfToken);
+    expect(response.headers.get('set-cookie')).toContain('enghub_csrf=');
+    expect(db.authSession.update).toHaveBeenCalledWith({ where: { id: 'session-id' }, data: { csrfTokenHash: expect.any(String) } });
   });
 });

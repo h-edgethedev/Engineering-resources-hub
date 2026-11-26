@@ -14,7 +14,7 @@ const publicUserSelect = {
   displayName: true,
   status: true,
   createdAt: true,
-  roleAssignments: { select: { id: true, role: true, universityId: true, scopeKey: true } },
+  roleAssignments: { select: { id: true, role: true, universityId: true, scopeKey: true, createdAt: true } },
 } as const;
 
 function digest(value: string) {

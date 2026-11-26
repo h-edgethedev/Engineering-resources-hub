@@ -11,6 +11,7 @@ export interface AuthUser {
     role: 'SUPER_ADMIN' | 'UNIVERSITY_ADMIN' | 'MODERATOR' | 'CONTRIBUTOR' | 'STUDENT';
     universityId: string | null;
     scopeKey: string;
+    createdAt: string;
   }>;
 }
 
