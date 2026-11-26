@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { PublicHeader } from './PublicHeader';
 import { PdfFirstPagePreview } from './PdfFirstPagePreview';
 import { useAuth } from './auth';
+import { fetchCourses } from './ResourceSubmission';
 
 interface Envelope<T> { data: T; meta?: { page: number; pageSize: number; total: number; totalPages: number }; }
 interface University { id: string; name: string; slug: string; countryCode: string; faculties?: Faculty[]; _count?: { faculties: number }; }
@@ -16,13 +17,15 @@ interface Course {
   offerings: Array<{ academicSession: { label: string }; semester: { code: string; label: string; programmeLevel: { code: string; label: string | null } } }>;
 }
 interface Resource {
-  id: string; title: string; description: string | null; type: string; status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'REMOVED'; createdAt: string; quarantinedAt?: string | null;
-  course: { id: string; code: string; title: string };
+  id: string; title: string; description: string | null; type: string; status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'REMOVED'; createdAt: string; quarantinedAt?: string | null; sourceAttribution?: string | null; tags?: string[];
+  course: { id: string; code: string; title: string; programme: { department: { faculty: { university: { slug: string } } } } };
   academicSession: { id: string; label: string } | null;
   semester: { id: string; code: string; label: string; programmeLevel: { code: string; label: string | null } } | null;
   file: { id: string; originalFilename: string; mediaType: string; byteSize: number } | null;
   uploader: { id: string; displayName: string; profile: { username: string | null } | null } | null;
 }
+
+const editableResourceTypes = ['LECTURE_NOTE', 'TEXTBOOK', 'PAST_QUESTION', 'SOLUTION', 'LAB_MANUAL', 'PROGRAMMING_EXERCISE', 'OTHER'];
 
 async function api<T>(path: string): Promise<Envelope<T>> {
   const response = await fetch(`/api/v1${path}`, { credentials: 'include' });
@@ -159,11 +162,23 @@ export function ResourceDetailPage() {
   const [governanceOpen, setGovernanceOpen] = useState(false);
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [editType, setEditType] = useState('LECTURE_NOTE');
+  const [editSource, setEditSource] = useState('');
+  const [editTags, setEditTags] = useState('');
+  const [editCourseId, setEditCourseId] = useState('');
+  const [editAcademicSessionId, setEditAcademicSessionId] = useState('');
+  const [editSemesterId, setEditSemesterId] = useState('');
   const [governanceMessage, setGovernanceMessage] = useState('');
   const [governanceError, setGovernanceError] = useState('');
   const canGovern = user?.roleAssignments.some((grant) => grant.role === 'SUPER_ADMIN' || grant.role === 'MODERATOR') ?? false;
+  const superAdmin = user?.roleAssignments.some((grant) => grant.role === 'SUPER_ADMIN') ?? false;
   const resourceQuery = useQuery({ queryKey: ['resource', resourceId], queryFn: async () => (await api<Resource>(`/resources/${resourceId}`)).data, enabled: Boolean(resourceId) });
   const resource = resourceQuery.data;
+  const coursesQuery = useQuery({ queryKey: ['courses', 'resource-detail-edit', resource?.course.programme.department.faculty.university.slug], queryFn: () => fetchCourses(resource!.course.programme.department.faculty.university.slug), enabled: governanceOpen && Boolean(resource), staleTime: 5 * 60_000 });
+  const editCourses = coursesQuery.data ?? [];
+  const selectedEditCourse = editCourses.find((course) => course.id === editCourseId);
+  const editAcademicSessions = [...new Map((selectedEditCourse?.offerings ?? []).map(({ academicSession }) => [academicSession.id, academicSession])).values()];
+  const editSemesters = [...new Map((selectedEditCourse?.offerings ?? []).filter((offering) => !editAcademicSessionId || offering.academicSession.id === editAcademicSessionId).map(({ semester }) => [semester.id, semester])).values()];
   async function governanceRequest(path: string, method: string, body: Record<string, unknown>) {
     const csrfResponse = await fetch('/api/v1/auth/csrf', { credentials: 'include' });
     if (!csrfResponse.ok) throw new Error('Your sign-in session may have expired. Sign in again and retry.');
@@ -183,9 +198,22 @@ export function ResourceDetailPage() {
   async function saveResourceEdits(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setGovernanceError(''); setGovernanceMessage('');
     try {
-      await governanceRequest('', 'PATCH', { title: editTitle.trim(), description: editDescription.trim() || null });
+      await governanceRequest('', 'PATCH', { courseId: editCourseId, academicSessionId: editAcademicSessionId || null, semesterId: editSemesterId || null, title: editTitle.trim(), description: editDescription.trim() || null, type: editType, sourceAttribution: editSource.trim() || null, tags: editTags.split(',').map((tag) => tag.trim()).filter(Boolean) });
       setGovernanceOpen(false); setGovernanceMessage('Resource details updated.');
     } catch (error) { setGovernanceError(error instanceof Error ? error.message : 'Could not update this resource.'); }
+  }
+  function openResourceEditor() {
+    if (!resource) return;
+    setEditTitle(resource.title);
+    setEditDescription(resource.description ?? '');
+    setEditType(resource.type);
+    setEditSource(resource.sourceAttribution ?? '');
+    setEditTags((resource.tags ?? []).join(', '));
+    setEditCourseId(resource.course.id);
+    setEditAcademicSessionId(resource.academicSession?.id ?? '');
+    setEditSemesterId(resource.semester?.id ?? '');
+    setGovernanceOpen((value) => !value);
+    setGovernanceError('');
   }
   async function quarantineResource() {
     const reason = window.prompt('Reason for quarantining this resource:');
@@ -195,6 +223,23 @@ export function ResourceDetailPage() {
       await governanceRequest('/quarantine', 'POST', { reason: reason.trim() });
       setGovernanceMessage('Resource quarantined and hidden from public discovery.');
     } catch (error) { setGovernanceError(error instanceof Error ? error.message : 'Could not quarantine this resource.'); }
+  }
+  async function replaceResourceFile(file: File | undefined) {
+    if (!file || !resource || !window.confirm(`Replace the file for “${resource.title}”? The resource will return to pending review.`)) return;
+    setGovernanceError(''); setGovernanceMessage('');
+    try {
+      const csrfResponse = await fetch('/api/v1/auth/csrf', { credentials: 'include' });
+      if (!csrfResponse.ok) throw new Error('Your sign-in session may have expired. Sign in again and retry.');
+      const csrf = await csrfResponse.json() as { data: { csrfToken: string } };
+      const form = new FormData(); form.set('file', file);
+      const response = await fetch(`/api/v1/resources/${resourceId}/file`, { method: 'POST', credentials: 'include', headers: { 'X-CSRF-Token': csrf.data.csrfToken }, body: form });
+      if (!response.ok) {
+        const result = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+        throw new Error(result?.error?.message ?? 'Could not replace the resource file.');
+      }
+      await Promise.all([queryClient.invalidateQueries({ queryKey: ['resource', resourceId] }), queryClient.invalidateQueries({ queryKey: ['discovery', 'resources'] }), queryClient.invalidateQueries({ queryKey: ['course-resources'] })]);
+      setGovernanceMessage('File replaced. The resource returned to pending review.');
+    } catch (error) { setGovernanceError(error instanceof Error ? error.message : 'Could not replace the resource file.'); }
   }
   async function submitReport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setReportError(''); setReportMessage('');
@@ -210,10 +255,22 @@ export function ResourceDetailPage() {
   return <div className="site-shell"><PublicHeader /><main className="discovery-page detail-page"><Link className="text-link" to="/explore">← Explore</Link>
     {resourceQuery.isPending && <p className="discovery-state" role="status">Loading resource…</p>}
     {resourceQuery.isError && <div className="catalog-message catalog-error" role="alert">{resourceQuery.error.message}</div>}
-    {resource && <><p className="eyebrow">{formatResourceType(resource.type)} · {resource.status} RESOURCE</p><h1>{resource.title}</h1><p className="detail-course-code"><Link to={`/courses/${resource.course.id}`}>{resource.course.code} · {resource.course.title}</Link></p>{resource.description && <p className="detail-description">{resource.description}</p>}
+    {resource && <><p className="eyebrow">{formatResourceType(resource.type)} · {resource.status} RESOURCE</p><h1>{resource.title}</h1><p className="detail-course-code"><Link to={`/courses/${resource.course.id}`}>{resource.course.code} · {resource.course.title}</Link></p><section className="resource-description-panel" aria-label="About this resource"><h2>About this resource</h2><p>{resource.description?.trim() || 'No description has been provided for this resource.'}</p></section>
       <dl className="resource-metadata"><div><dt>Academic session</dt><dd>{resource.academicSession?.label ?? 'Not specified'}</dd></div><div><dt>Level and semester</dt><dd>{resource.semester ? `${resource.semester.programmeLevel.label ?? `${resource.semester.programmeLevel.code} Level`} · ${resource.semester.label}` : 'Not specified'}</dd></div><div><dt>Shared by</dt><dd>{resource.uploader?.displayName ?? 'EngHub community'}<br /><span className="resource-uploader-tag">@{resource.uploader?.profile?.username ?? 'username unavailable'}</span></dd></div></dl>
       <div className="resource-actions"><a className="button button-purple" href={`/api/v1/resources/${resource.id}/file/download`}>Download file</a>{resource.file && <span>{resource.file.originalFilename} · {Math.max(1, Math.round(resource.file.byteSize / 1024))} KB</span>}</div>
-      {canGovern && <section className="resource-governance-tools" aria-label="Resource moderation tools"><div className="resource-governance-heading"><div><p className="card-kicker">MODERATION TOOLS</p><strong>Manage this resource</strong></div><div className="resource-governance-actions">{!resource.quarantinedAt && resource.status !== 'REMOVED' && <button className="button button-outline" type="button" onClick={() => void quarantineResource()}>Quarantine resource</button>}<button className="button button-outline" type="button" onClick={() => { setEditTitle(resource.title); setEditDescription(resource.description ?? ''); setGovernanceOpen((value) => !value); setGovernanceError(''); }}>{governanceOpen ? 'Close editor' : 'Edit details'}</button></div></div>{resource.quarantinedAt && <p className="field-hint">This resource is quarantined and hidden from public discovery.</p>}{governanceMessage && <p className="submission-success" role="status">{governanceMessage}</p>}{governanceError && <p className="auth-error" role="alert">{governanceError}</p>}{governanceOpen && <form className="governance-edit-form" onSubmit={(event) => void saveResourceEdits(event)}><label>Resource title<input value={editTitle} maxLength={250} required onChange={(event) => setEditTitle(event.target.value)} /></label><label>Description <span className="optional-label">Optional</span><textarea value={editDescription} maxLength={10_000} rows={4} onChange={(event) => setEditDescription(event.target.value)} /></label><button className="button button-purple" type="submit">Save changes</button></form>}</section>}
+      {canGovern && <section className="resource-governance-tools" aria-label="Resource moderation tools"><div className="resource-governance-heading"><div><p className="card-kicker">MODERATION TOOLS</p><strong>Manage this resource</strong></div><div className="resource-governance-actions">{!resource.quarantinedAt && resource.status !== 'REMOVED' && <button className="button button-outline" type="button" onClick={() => void quarantineResource()}>Quarantine resource</button>}<button className="button button-outline" type="button" onClick={openResourceEditor}>{governanceOpen ? 'Close editor' : 'Edit details'}</button></div></div>{resource.quarantinedAt && <p className="field-hint">This resource is quarantined and hidden from public discovery.</p>}{governanceMessage && <p className="submission-success" role="status">{governanceMessage}</p>}{governanceError && <p className="auth-error" role="alert">{governanceError}</p>}{superAdmin && resource.file && <label className="file-replacement-control">Replace file…<input type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt" onChange={(event) => { void replaceResourceFile(event.target.files?.[0]); event.target.value = ''; }} /></label>}{governanceOpen && <form className="governance-edit-form" onSubmit={(event) => void saveResourceEdits(event)}>
+        <label>Course<select value={editCourseId} onChange={(event) => { setEditCourseId(event.target.value); setEditAcademicSessionId(''); setEditSemesterId(''); }} disabled={coursesQuery.isPending || !editCourses.length} required>{coursesQuery.isPending && <option value={editCourseId}>Loading courses…</option>}{editCourses.map((course) => <option key={course.id} value={course.id}>{course.code} · {course.title} — {course.programme.department.name}</option>)}</select></label>
+        {coursesQuery.isError && <p className="auth-error" role="alert">{coursesQuery.error.message}</p>}
+        <label>Academic session <span className="optional-label">Optional</span><select value={editAcademicSessionId} onChange={(event) => { setEditAcademicSessionId(event.target.value); if (editSemesterId && event.target.value && !selectedEditCourse?.offerings.some((offering) => offering.academicSession.id === event.target.value && offering.semester.id === editSemesterId)) setEditSemesterId(''); }} disabled={!selectedEditCourse?.offerings.length}><option value="">Not specified</option>{editAcademicSessions.map((session) => <option key={session.id} value={session.id}>{session.label}</option>)}</select></label>
+        <label>Level and semester <span className="optional-label">Optional</span><select value={editSemesterId} onChange={(event) => { setEditSemesterId(event.target.value); if (editAcademicSessionId && event.target.value && !selectedEditCourse?.offerings.some((offering) => offering.academicSession.id === editAcademicSessionId && offering.semester.id === event.target.value)) setEditAcademicSessionId(''); }} disabled={!selectedEditCourse?.offerings.length}><option value="">Not specified</option>{editSemesters.map((semester) => <option key={semester.id} value={semester.id}>{semester.programmeLevel.label ?? `${semester.programmeLevel.code} Level`} · {semester.label}</option>)}</select></label>
+        <label>Resource title<input value={editTitle} maxLength={250} required onChange={(event) => setEditTitle(event.target.value)} /></label>
+        <label>Material type<select value={editType} onChange={(event) => setEditType(event.target.value)}>{editableResourceTypes.map((type) => <option key={type} value={type}>{formatResourceType(type)}</option>)}</select></label>
+        <label>Description <span className="optional-label">Optional</span><textarea value={editDescription} maxLength={10_000} rows={4} onChange={(event) => setEditDescription(event.target.value)} /></label>
+        <label>Author or source attribution <span className="optional-label">Optional</span><input value={editSource} maxLength={500} onChange={(event) => setEditSource(event.target.value)} /></label>
+        <label>Tags and keywords <span className="optional-label">Optional</span><input value={editTags} onChange={(event) => setEditTags(event.target.value)} placeholder="comma separated" /></label>
+        <div><span className="field-label">File</span><p>{resource.file?.originalFilename ?? 'No file attached'}</p><span className="field-hint">Moderators can edit resource details but cannot replace its file.</span></div>
+        <button className="button button-purple" type="submit">Save resource</button>
+      </form>}</section>}
       {user && resource.status === 'APPROVED' && <section className="resource-report"><button type="button" className="text-link" onClick={() => setReportOpen((value) => !value)}>{reportOpen ? 'Close report form' : 'Report a problem with this resource'}</button>{reportMessage && <p role="status">{reportMessage}</p>}{reportOpen && <form className="governance-edit-form" onSubmit={(event) => void submitReport(event)}><label>Issue type<select value={reportCategory} onChange={(event) => setReportCategory(event.target.value)}><option value="BROKEN_FILE">File is broken or unreadable</option><option value="WRONG_CONTENT">Wrong course or content</option><option value="COPYRIGHT">Copyright concern</option><option value="PRIVACY">Privacy concern</option><option value="INAPPROPRIATE">Inappropriate content</option><option value="OTHER">Other</option></select></label><label>Details<textarea required minLength={1} maxLength={2000} rows={3} value={reportExplanation} onChange={(event) => setReportExplanation(event.target.value)} /></label>{reportError && <p className="auth-error" role="alert">{reportError}</p>}<button className="button button-purple" type="submit">Send report</button></form>}</section>}
       {resource.file?.mediaType === 'application/pdf' && <section className="resource-preview" aria-label="Document preview"><PdfFirstPagePreview title={resource.title} src={`/api/v1/resources/${resource.id}/file`} /></section>}
       {resource.file?.mediaType === 'text/plain' && <section className="resource-preview"><iframe title={`Preview of ${resource.title}`} src={`/api/v1/resources/${resource.id}/file`} /></section>}

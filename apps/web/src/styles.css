@@ -3836,6 +3836,29 @@ a {
   max-width: 760px;
 }
 
+.resource-description-panel {
+  max-width: 820px;
+  margin: 18px 0 22px;
+  padding: 16px 18px;
+  border: 1px solid #e7e9ef;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.resource-description-panel h2 {
+  margin: 0 0 7px;
+  color: #354052;
+  font-size: 12px;
+}
+
+.resource-description-panel p {
+  margin: 0;
+  color: #687386;
+  font-size: 13px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
 .detail-context {
   display: flex;
   flex-wrap: wrap;
