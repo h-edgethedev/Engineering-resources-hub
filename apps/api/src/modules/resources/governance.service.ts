@@ -32,10 +32,12 @@ type ResourceAccess = {
 };
 
 async function resourceAccess(resourceId: string) {
-  return prisma.resource.findUnique({ where: { id: resourceId }, select: {
-    id: true, status: true, uploadedById: true, trashedAt: true, quarantinedAt: true,
-    course: { select: { programme: { select: { department: { select: { faculty: { select: { universityId: true } } } } } } } },
-  } });
+  return prisma.resource.findUnique({
+    where: { id: resourceId }, select: {
+      id: true, status: true, uploadedById: true, trashedAt: true, quarantinedAt: true,
+      course: { select: { programme: { select: { department: { select: { faculty: { select: { universityId: true } } } } } } } },
+    }
+  });
 }
 function requireResource(resource: ResourceAccess | null): ResourceAccess {
   if (!resource) throw new ApiError(404, 'RESOURCE_NOT_FOUND', 'Resource was not found.');
@@ -56,12 +58,14 @@ function assertCanGovern(resource: ResourceAccess, actor: AuthContext) {
   if (!canGovern(resource, actor)) throw new ApiError(403, 'FORBIDDEN', 'You cannot manage this resource in its university.');
 }
 async function addEvent(tx: Prisma.TransactionClient, args: { resourceId: string; actor: AuthContext; action: string; reason?: string; fieldName?: string; previousValue?: unknown; newValue?: unknown }) {
-  await tx.resourceGovernanceEvent.create({ data: {
-    resourceId: args.resourceId, resourceIdSnapshot: args.resourceId, actorId: args.actor.user.id,
-    actorRole: roleSnapshot(args.actor), action: args.action, reason: args.reason, fieldName: args.fieldName,
-    ...(args.previousValue === undefined ? {} : { previousValue: args.previousValue as Prisma.InputJsonValue }),
-    ...(args.newValue === undefined ? {} : { newValue: args.newValue as Prisma.InputJsonValue }),
-  } });
+  await tx.resourceGovernanceEvent.create({
+    data: {
+      resourceId: args.resourceId, resourceIdSnapshot: args.resourceId, actorId: args.actor.user.id,
+      actorRole: roleSnapshot(args.actor), action: args.action, reason: args.reason, fieldName: args.fieldName,
+      ...(args.previousValue === undefined ? {} : { previousValue: args.previousValue as Prisma.InputJsonValue }),
+      ...(args.newValue === undefined ? {} : { newValue: args.newValue as Prisma.InputJsonValue }),
+    }
+  });
 }
 
 export async function editResourceMetadata(resourceId: string, input: UpdateResourceInput, actor: AuthContext) {
@@ -152,10 +156,17 @@ export async function requestResourceDeletion(resourceId: string, category: stri
   }
 }
 
-export async function listDeletionRequests(actor: AuthContext, page: number, pageSize: number, status?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED') {
+export async function listDeletionRequests(actor: AuthContext, page: number, pageSize: number, status?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED', q?: string) {
   const universityIds = actor.user.roleAssignments.filter((grant) => grant.role === 'MODERATOR' && grant.universityId).map((grant) => grant.universityId as string);
   if (!isSuperAdmin(actor) && universityIds.length === 0) throw new ApiError(403, 'FORBIDDEN', 'Only Moderators and Super Administrators can review deletion requests.');
-  const where = { ...(status ? { status } : {}), ...(isSuperAdmin(actor) ? {} : { universityIdSnapshot: { in: universityIds } }) };
+  const search = q ? {
+    OR: [
+      { resource: { title: { contains: q, mode: 'insensitive' as const } } },
+      { resource: { course: { code: { contains: q, mode: 'insensitive' as const } } } },
+      { explanation: { contains: q, mode: 'insensitive' as const } },
+    ],
+  } : {};
+  const where = { ...(status ? { status } : {}), ...search, ...(isSuperAdmin(actor) ? {} : { universityIdSnapshot: { in: universityIds } }) };
   const [total, items] = await Promise.all([
     prisma.deletionRequest.count({ where }),
     prisma.deletionRequest.findMany({ where, include: { resource: { include: resourceInclude } }, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], skip: (page - 1) * pageSize, take: pageSize }),
@@ -216,10 +227,11 @@ export async function listTrash(actor: AuthContext, page: number, pageSize: numb
   return { items, meta: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } };
 }
 
-export async function listQuarantined(actor: AuthContext, page: number, pageSize: number) {
+export async function listQuarantined(actor: AuthContext, page: number, pageSize: number, q?: string) {
   const universityIds = actor.user.roleAssignments.filter((grant) => grant.role === 'MODERATOR' && grant.universityId).map((grant) => grant.universityId as string);
   if (!isSuperAdmin(actor) && universityIds.length === 0) throw new ApiError(403, 'FORBIDDEN', 'Only Moderators and Super Administrators can view quarantined resources.');
-  const where = { quarantinedAt: { not: null }, trashedAt: null, ...(isSuperAdmin(actor) ? {} : { course: { programme: { department: { faculty: { universityId: { in: universityIds } } } } } }) };
+  const search = q ? { OR: [{ title: { contains: q, mode: 'insensitive' as const } }, { course: { code: { contains: q, mode: 'insensitive' as const } } }, { course: { title: { contains: q, mode: 'insensitive' as const } } }] } : {};
+  const where = { quarantinedAt: { not: null }, trashedAt: null, ...search, ...(isSuperAdmin(actor) ? {} : { course: { programme: { department: { faculty: { universityId: { in: universityIds } } } } } }) };
   const [total, items] = await Promise.all([prisma.resource.count({ where }), prisma.resource.findMany({ where, include: resourceInclude, orderBy: [{ quarantinedAt: 'desc' }, { id: 'asc' }], skip: (page - 1) * pageSize, take: pageSize })]);
   return { items, meta: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } };
 }
@@ -281,10 +293,11 @@ export async function submitResourceReport(resourceId: string, category: string,
   }
 }
 
-export async function listResourceReports(actor: AuthContext, page: number, pageSize: number, status?: 'OPEN' | 'RESOLVED' | 'DISMISSED') {
+export async function listResourceReports(actor: AuthContext, page: number, pageSize: number, status?: 'OPEN' | 'RESOLVED' | 'DISMISSED', q?: string) {
   const universityIds = actor.user.roleAssignments.filter((grant) => grant.role === 'MODERATOR' && grant.universityId).map((grant) => grant.universityId as string);
   if (!isSuperAdmin(actor) && universityIds.length === 0) throw new ApiError(403, 'FORBIDDEN', 'Only Moderators and Super Administrators can review reports.');
-  const where = { ...(status ? { status } : {}), ...(isSuperAdmin(actor) ? {} : { universityIdSnapshot: { in: universityIds } }) };
+  const search = q ? { OR: [{ resource: { title: { contains: q, mode: 'insensitive' as const } } }, { resource: { course: { code: { contains: q, mode: 'insensitive' as const } } } }, { explanation: { contains: q, mode: 'insensitive' as const } }] } : {};
+  const where = { ...(status ? { status } : {}), ...search, ...(isSuperAdmin(actor) ? {} : { universityIdSnapshot: { in: universityIds } }) };
   const [total, items] = await Promise.all([
     prisma.resourceReport.count({ where }),
     prisma.resourceReport.findMany({ where, include: { resource: { include: resourceInclude } }, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], skip: (page - 1) * pageSize, take: pageSize }),

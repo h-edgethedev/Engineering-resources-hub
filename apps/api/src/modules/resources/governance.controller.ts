@@ -37,7 +37,7 @@ export const requestDeletionController: RequestHandler = async (request, respons
   catch (error) { next(error); }
 };
 export const listDeletionRequestsController: RequestHandler = async (request, response, next) => {
-  try { const query = parsePage(request); const result = await listDeletionRequests(actor(request), query.page, query.pageSize, query.status); response.json({ data: result.items, meta: result.meta }); }
+  try { const query = parsePage(request); const result = await listDeletionRequests(actor(request), query.page, query.pageSize, query.status, query.q); response.json({ data: result.items, meta: result.meta }); }
   catch (error) { next(error); }
 };
 export const decideDeletionRequestController: RequestHandler = async (request, response, next) => {
@@ -53,7 +53,7 @@ export const listTrashController: RequestHandler = async (request, response, nex
   catch (error) { next(error); }
 };
 export const listQuarantinedController: RequestHandler = async (request, response, next) => {
-  try { const query = parsePage(request); const result = await listQuarantined(actor(request), query.page, query.pageSize); response.json({ data: result.items, meta: result.meta }); }
+  try { const query = parsePage(request); const result = await listQuarantined(actor(request), query.page, query.pageSize, query.q); response.json({ data: result.items, meta: result.meta }); }
   catch (error) { next(error); }
 };
 export const governanceInboxController: RequestHandler = async (request, response, next) => {
@@ -70,9 +70,9 @@ export const submitResourceReportController: RequestHandler = async (request, re
 };
 export const listResourceReportsController: RequestHandler = async (request, response, next) => {
   try {
-    const parsed = z.object({ page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(20), status: z.enum(['OPEN', 'RESOLVED', 'DISMISSED']).optional() }).safeParse(request.query);
+    const parsed = z.object({ page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(20), status: z.enum(['OPEN', 'RESOLVED', 'DISMISSED']).optional(), q: z.string().trim().max(200).optional() }).safeParse(request.query);
     if (!parsed.success) throw new ApiError(400, 'VALIDATION_ERROR', 'Request query is invalid.', parsed.error.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message })));
-    const result = await listResourceReports(actor(request), parsed.data.page, parsed.data.pageSize, parsed.data.status);
+    const result = await listResourceReports(actor(request), parsed.data.page, parsed.data.pageSize, parsed.data.status, parsed.data.q);
     response.json({ data: result.items, meta: result.meta });
   } catch (error) { next(error); }
 };

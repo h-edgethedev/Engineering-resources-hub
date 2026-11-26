@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { PublicHeader } from './PublicHeader';
@@ -64,13 +64,23 @@ export function ResourceGovernancePage() {
   const [tab, setTab] = useState<'published' | 'requests' | 'reports' | 'trash' | 'quarantined'>(initialTab);
   const [page, setPage] = useState(1);
   const [message, setMessage] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 400);
+    return () => window.clearTimeout(timeout);
+  }, [searchInput]);
+  const searchParam = search ? `&q=${encodeURIComponent(search)}` : '';
   const base = '/resources';
   const refresh = useGovernanceRefresh();
-  const publishedQuery = useQuery({ queryKey: ['governance', 'published', page], enabled: tab === 'published', queryFn: () => api<GovernanceResource[]>(`${base}?status=APPROVED&page=${page}&pageSize=20`) });
-  const requestsQuery = useQuery({ queryKey: ['governance', 'requests', page], enabled: tab === 'requests', queryFn: () => api<DeletionRequest[]>(`${base}/governance/deletion-requests?status=PENDING&page=${page}&pageSize=20`) });
-  const reportsQuery = useQuery({ queryKey: ['governance', 'reports', page], enabled: tab === 'reports', queryFn: () => api<ResourceReport[]>(`${base}/governance/reports?status=OPEN&page=${page}&pageSize=20`) });
-  const trashQuery = useQuery({ queryKey: ['governance', 'trash', page], enabled: tab === 'trash', queryFn: () => api<GovernanceResource[]>(`${base}/governance/trash?page=${page}&pageSize=20`) });
-  const quarantinedQuery = useQuery({ queryKey: ['governance', 'quarantined', page], enabled: tab === 'quarantined', queryFn: () => api<GovernanceResource[]>(`${base}/governance/quarantined?page=${page}&pageSize=20`) });
+  const publishedQuery = useQuery({ queryKey: ['governance', 'published', page, search], enabled: tab === 'published', queryFn: () => api<GovernanceResource[]>(`${base}?status=APPROVED&page=${page}&pageSize=20${searchParam}`) });
+  const requestsQuery = useQuery({ queryKey: ['governance', 'requests', page, search], enabled: tab === 'requests', queryFn: () => api<DeletionRequest[]>(`${base}/governance/deletion-requests?status=PENDING&page=${page}&pageSize=20${searchParam}`) });
+  const reportsQuery = useQuery({ queryKey: ['governance', 'reports', page, search], enabled: tab === 'reports', queryFn: () => api<ResourceReport[]>(`${base}/governance/reports?status=OPEN&page=${page}&pageSize=20${searchParam}`) });
+  const trashQuery = useQuery({ queryKey: ['governance', 'trash', page, search], enabled: tab === 'trash', queryFn: () => api<GovernanceResource[]>(`${base}/governance/trash?page=${page}&pageSize=20${searchParam}`) });
+  const quarantinedQuery = useQuery({ queryKey: ['governance', 'quarantined', page, search], enabled: tab === 'quarantined', queryFn: () => api<GovernanceResource[]>(`${base}/governance/quarantined?page=${page}&pageSize=20${searchParam}`) });
   const activeQuery = tab === 'published' ? publishedQuery : tab === 'requests' ? requestsQuery : tab === 'reports' ? reportsQuery : tab === 'trash' ? trashQuery : quarantinedQuery;
 
   async function decideRequest(requestId: string, action: 'APPROVE' | 'REJECT') {
@@ -117,6 +127,9 @@ export function ResourceGovernancePage() {
     <nav className="governance-tabs" aria-label="Resource management views">
       {([['published', 'Published resources'], ['requests', 'Deletion requests'], ['reports', 'Reports'], ['trash', 'Trash'], ['quarantined', 'Quarantined']] as const).map(([value, text]) => <button type="button" key={value} className={tab === value ? 'is-active' : ''} onClick={() => { setTab(value); setPage(1); }}>{text}</button>)}
     </nav>
+    <form className="governance-search" role="search" onSubmit={(event) => { event.preventDefault(); setSearch(searchInput.trim()); setPage(1); }}>
+      <label><span className="sr-only">Search governance items</span><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder={`Search ${tab === 'published' ? 'published resources' : tab === 'requests' ? 'deletion requests' : tab === 'reports' ? 'reports' : tab === 'trash' ? 'Trash resources' : 'quarantined resources'}…`} />{searchInput && <button type="button" className="governance-search-clear" onClick={() => { setSearchInput(''); setSearch(''); setPage(1); }} aria-label="Clear search">×</button>}</label>
+    </form>
     {message && <p className="admin-feedback" role="status">{message}</p>}
     {activeQuery.isPending && <p className="discovery-state" role="status">Loading {tab}…</p>}
     {activeQuery.isError && <div className="catalog-message catalog-error" role="alert">{activeQuery.error.message}<button onClick={() => void activeQuery.refetch()}>Try again</button></div>}
