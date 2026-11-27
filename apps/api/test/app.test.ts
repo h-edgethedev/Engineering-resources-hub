@@ -78,6 +78,7 @@ describe('API configuration and endpoints', () => {
     expect(response.headers.get('x-content-type-options')).toBe('nosniff');
     expect(response.headers.get('x-frame-options')).toBe('DENY');
     expect(response.headers.get('referrer-policy')).toBe('no-referrer');
+    expect(response.headers.get('x-request-id')).toMatch(/^[0-9a-f-]{36}$/);
   });
 
   it('does not reflect untrusted origins in CORS headers', async () => {
@@ -115,8 +116,10 @@ describe('API configuration and endpoints', () => {
     const response = await request('/not-a-route');
 
     expect(response.status).toBe(404);
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(body).toMatchObject({
       error: { code: 'ROUTE_NOT_FOUND' },
     });
+    expect(body.error.requestId).toBe(response.headers.get('x-request-id'));
   });
 });

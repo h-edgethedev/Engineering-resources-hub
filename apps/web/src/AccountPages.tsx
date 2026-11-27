@@ -1,9 +1,10 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, type FormEvent } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { PublicHeader } from './PublicHeader';
 import type { AuthUser } from './auth';
 import { ResourceSubmission } from './ResourceSubmission';
+import { apiMutation, apiRequest } from './api';
 
 interface Envelope<T> {
   data: T;
@@ -85,12 +86,7 @@ const preferenceLabels: Record<string, string> = {
 };
 
 async function readApi<T>(path: string): Promise<Envelope<T>> {
-  const response = await fetch(`/api/v1${path}`, { credentials: 'include' });
-  if (!response.ok) {
-    const body = await response.json().catch(() => null) as Envelope<unknown> | null;
-    throw new Error(body?.error?.message ?? 'Could not load this account information.');
-  }
-  return response.json() as Promise<Envelope<T>>;
+  return apiRequest<T>(path);
 }
 
 async function loadAccountDetails(): Promise<AccountDetails> {
@@ -114,12 +110,26 @@ function ResourceStatus({ status }: { status: ResourceItem['status'] }) {
   return <span className={`admin-status admin-status-${status.toLowerCase()}`}>{statusLabels[status]}</span>;
 }
 
-function UploadedResourceCard({ resource }: { resource: ResourceItem }) {
+function UploadedResourceCard({ resource, userId }: { resource: ResourceItem; userId: string }) {
+  const queryClient = useQueryClient();
+  const [requestOpen, setRequestOpen] = useState(false);
+  const [category, setCategory] = useState('OTHER');
+  const [explanation, setExplanation] = useState('');
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
   const context = [
     resource.semester?.programmeLevel.label ?? (resource.semester ? `${resource.semester.programmeLevel.code} Level` : null),
     resource.semester?.label,
     resource.academicSession?.label,
   ].filter(Boolean).join(' · ');
+  async function requestDeletion(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setError(''); setMessage('');
+    try {
+      await apiMutation(`/resources/${resource.id}/deletion-requests`, { method: 'POST', body: JSON.stringify({ category, explanation: explanation.trim() }) }, queryClient, [['my-resources', userId]]);
+      setMessage('Deletion request sent for Super Admin review. The resource remains available until a decision is made.');
+      setRequestOpen(false); setExplanation('');
+    } catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Could not submit your deletion request.'); }
+  }
   return <article className="account-resource-card">
     <div className="account-resource-copy">
       <p className="card-kicker">{resource.type.replaceAll('_', ' ')}{context ? ` · ${context}` : ''}</p>
@@ -129,6 +139,12 @@ function UploadedResourceCard({ resource }: { resource: ResourceItem }) {
       <p className="account-resource-file">{resource.file?.originalFilename ?? 'File unavailable'} · Submitted {new Date(resource.createdAt).toLocaleDateString()}</p>
     </div>
     <ResourceStatus status={resource.status} />
+    {resource.status !== 'REMOVED' && <details className="account-resource-removal" open={requestOpen} onToggle={(event) => setRequestOpen(event.currentTarget.open)}><summary>Request removal</summary><form onSubmit={(event) => void requestDeletion(event)}>
+      <label>Reason<select value={category} onChange={(event) => setCategory(event.target.value)}><option value="DUPLICATE">Duplicate</option><option value="INCORRECT_CLASSIFICATION">Incorrect classification</option><option value="WRONG_COURSE">Wrong course</option><option value="OUTDATED_MISLEADING">Outdated or misleading</option><option value="CORRUPTED_FILE">Corrupted file</option><option value="COPYRIGHT">Copyright concern</option><option value="PRIVACY">Privacy concern</option><option value="INAPPROPRIATE">Inappropriate content</option><option value="OTHER">Other</option></select></label>
+      <label>Details<textarea value={explanation} onChange={(event) => setExplanation(event.target.value)} minLength={10} maxLength={2000} required /></label>
+      <button className="button button-outline" type="submit">Send removal request</button>
+    </form></details>}
+    {message && <p className="submission-success" role="status">{message}</p>}{error && <p className="auth-error" role="alert">{error}</p>}
   </article>;
 }
 
@@ -188,7 +204,7 @@ export function AccountDashboard({ user }: { user: AuthUser }) {
         {resourcesQuery.isPending && <p className="discovery-state" role="status">Loading your uploaded materials…</p>}
         {resourcesQuery.isError && <div className="catalog-message catalog-error" role="alert"><span>{resourcesQuery.error.message}</span><button type="button" onClick={() => void resourcesQuery.refetch()}>Try again</button></div>}
         {resourcesQuery.isSuccess && resources.length === 0 && <div className="account-empty-state"><span aria-hidden="true">▤</span><div><h3>{status === 'ALL' ? 'No materials submitted yet' : `No ${statusLabels[status].toLowerCase()} materials`}</h3><p>{status === 'ALL' ? 'Your uploads and their review statuses will appear here.' : 'Try another status filter to view other submissions.'}</p></div>{status === 'ALL' && canSubmit && <Link className="text-link" to="/app/resources/new">Upload your first resource <span aria-hidden="true">→</span></Link>}</div>}
-        <div className="account-resource-list">{resources.map((resource) => <UploadedResourceCard key={resource.id} resource={resource} />)}</div>
+        <div className="account-resource-list">{resources.map((resource) => <UploadedResourceCard key={resource.id} resource={resource} userId={user.id} />)}</div>
         {resourcesQuery.data?.meta && resourcesQuery.data.meta.totalPages > 1 && <div className="admin-paging"><span>{resourcesQuery.data.meta.total} materials · page {page} of {resourcesQuery.data.meta.totalPages}</span><div><button type="button" disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>Previous</button><button type="button" disabled={page >= resourcesQuery.data.meta.totalPages} onClick={() => setPage((current) => current + 1)}>Next</button></div></div>}
       </section>
     </main>

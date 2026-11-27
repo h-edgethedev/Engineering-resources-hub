@@ -181,12 +181,16 @@ describe('resource management endpoints', () => {
   it('lists resources with filters and pagination', async () => {
     const response = await request(`/api/v1/resources?courseId=${courseId}&type=LECTURE_NOTE&page=2&pageSize=5`);
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({ data: [{ id: resourceId }], meta: { page: 2, pageSize: 5, total: 1 } });
+    const body = await response.json() as { data: Array<Record<string, unknown>>; meta: { page: number; pageSize: number; total: number } };
+    expect(body).toMatchObject({ data: [{ id: resourceId }], meta: { page: 2, pageSize: 5, total: 1 } });
     expect(db.resource.findMany.mock.calls[0][0]).toMatchObject({
       where: { courseId, type: 'LECTURE_NOTE', status: 'APPROVED', AND: [{ OR: [{ status: 'APPROVED' }, { uploadedById: userId }] }, { trashedAt: null }, { quarantinedAt: null }] },
       skip: 5,
       take: 5,
     });
+    for (const key of ['trashExpiresAt', 'trashGeneration', 'trashedById', 'trashReason', 'trashMethod', 'statusBeforeTrash', 'quarantinedById', 'quarantineReason']) {
+      expect(body.data[0]).not.toHaveProperty(key);
+    }
   });
 
   it('fetches a resource by UUID', async () => {
@@ -337,6 +341,25 @@ describe('resource management endpoints', () => {
     ]));
   });
 
+  it.each([
+    ['STUDENT', [{ id: 'student-role', role: 'STUDENT', universityId: null, scopeKey: 'global' }], true, false],
+    ['MODERATOR', [{ id: 'moderator-role', role: 'MODERATOR', universityId, scopeKey: universityId }], true, true],
+    ['UNIVERSITY_ADMIN', [{ id: 'admin-role', role: 'UNIVERSITY_ADMIN', universityId, scopeKey: universityId }], true, true],
+    ['SUPER_ADMIN', [{ id: 'super-role', role: 'SUPER_ADMIN', universityId: null, scopeKey: 'global' }], false, false],
+  ])('%s status-filter visibility stays within its role policy', async (_name, roleAssignments, hasOwnerBranch, hasUniversityBranch) => {
+    db.authSession.findUnique.mockResolvedValueOnce({
+      id: 'test-session-id', csrfTokenHash, expiresAt: new Date(Date.now() + 60_000), revokedAt: null,
+      user: { id: userId, email: 'test@example.test', displayName: 'Test', status: 'ACTIVE', emailVerifiedAt: new Date(), roleAssignments },
+    });
+    db.resource.count.mockResolvedValueOnce(0);
+    db.resource.findMany.mockResolvedValueOnce([]);
+    const response = await request('/api/v1/resources?status=REJECTED');
+    expect(response.status).toBe(200);
+    const where = db.resource.findMany.mock.calls[0][0].where;
+    if (hasOwnerBranch) expect(where.AND).toContainEqual({ OR: [{ status: 'APPROVED' }, { uploadedById: userId }, ...(hasUniversityBranch ? [{ course: { programme: { department: { faculty: { universityId: { in: [universityId] } } } } } }] : [])] });
+    else expect(where.AND).not.toContainEqual(expect.objectContaining({ OR: expect.anything() }));
+  });
+
   it('hides other users\' rejected resources from students', async () => {
     db.resource.findUnique.mockResolvedValueOnce({ ...resourceScope, status: 'REJECTED', uploadedById: '941e3fa0-122b-11e1-b85c-61cd3cbb3299' });
     const response = await request(`/api/v1/resources/${resourceId}`);
@@ -414,6 +437,23 @@ describe('resource management endpoints', () => {
     expect(db.deletionRequest.create).toHaveBeenCalledWith({ data: expect.objectContaining({ resourceId, requestedById: moderatorId, category: 'DUPLICATE' }) });
     expect(db.resource.update).not.toHaveBeenCalled();
     expect(storage.delete).not.toHaveBeenCalled();
+  });
+
+  it('lets a student request deletion of their own resource for Super Admin review', async () => {
+    const response = await request(`/api/v1/resources/${resourceId}/deletion-requests`, json({ category: 'OTHER', explanation: 'I uploaded the wrong file.' }));
+    expect(response.status).toBe(201);
+    expect(db.deletionRequest.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ requestedById: userId, requestedByRole: 'STUDENT' }) }));
+    expect(db.resource.update).not.toHaveBeenCalled();
+  });
+
+  it('does not let an owner who is a Moderator request governance action on their own resource', async () => {
+    db.authSession.findUnique.mockResolvedValueOnce({
+      id: 'test-session-id', csrfTokenHash, expiresAt: new Date(Date.now() + 60_000), revokedAt: null,
+      user: { id: userId, email: 'moderator@example.test', displayName: 'Moderator', status: 'ACTIVE', emailVerifiedAt: new Date(), roleAssignments: [{ id: 'moderator-role', role: 'MODERATOR', universityId, scopeKey: universityId }] },
+    });
+    const response = await request(`/api/v1/resources/${resourceId}/deletion-requests`, json({ category: 'OTHER', explanation: 'Self request.' }));
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ error: { code: 'SELF_GOVERNANCE_FORBIDDEN' } });
   });
 
   it('allows a Super Admin to approve their own deletion request and moves the resource to Trash', async () => {

@@ -1,5 +1,6 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from './api';
 
 export interface AuthUser {
   id: string;
@@ -34,35 +35,15 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 const authQueryKey = ['auth', 'me'];
 
-async function readError(response: Response, fallback: string) {
-  try {
-    const body = (await response.json()) as AuthEnvelope<unknown>;
-    return body.error?.message ?? fallback;
-  } catch {
-    return fallback;
-  }
-}
-
 async function requestCredentials(path: string, body: Record<string, string>) {
-  const response = await fetch(`/api/v1/auth/${path}`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+  const result = await apiRequest<{ user: AuthUser }>(`/auth/${path}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   });
-  if (!response.ok) throw new Error(await readError(response, 'Could not complete that request.'));
-  const result = (await response.json()) as AuthEnvelope<{ user: AuthUser }>;
   return result.data.user;
 }
 
 async function requestRegistration(body: Record<string, string>) {
-  const response = await fetch('/api/v1/auth/register', {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) throw new Error(await readError(response, 'Could not create your account.'));
+  await apiRequest('/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -70,10 +51,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const sessionQuery = useQuery<AuthUser | null, Error>({
     queryKey: authQueryKey,
     queryFn: async () => {
-      const response = await fetch('/api/v1/auth/me', { credentials: 'include' });
-      if (response.status === 401) return null;
-      if (!response.ok) throw new Error(await readError(response, 'Could not restore your sign-in session.'));
-      const result = (await response.json()) as AuthEnvelope<{ user: AuthUser }>;
+      let result: AuthEnvelope<{ user: AuthUser }>;
+      try { result = await apiRequest<{ user: AuthUser }>('/auth/me'); }
+      catch (error) { if (error instanceof Error && 'code' in error && error.code === 'AUTHENTICATION_REQUIRED') return null; throw error; }
       return result.data.user;
     },
     retry: false,
@@ -93,15 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     acceptVerifiedSession: (user) => { queryClient.setQueryData(authQueryKey, user); },
     signOut: async () => {
-      const csrfResponse = await fetch('/api/v1/auth/csrf', { credentials: 'include' });
-      if (!csrfResponse.ok) throw new Error(await readError(csrfResponse, 'Could not prepare a secure sign-out request.'));
-      const csrfResult = (await csrfResponse.json()) as AuthEnvelope<{ csrfToken: string }>;
-      const response = await fetch('/api/v1/auth/logout', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'X-CSRF-Token': csrfResult.data.csrfToken },
-      });
-      if (!response.ok) throw new Error(await readError(response, 'Could not sign out.'));
+      await apiRequest<void>('/auth/logout', { method: 'POST' });
       queryClient.setQueryData(authQueryKey, null);
     },
     refresh: async () => { await queryClient.invalidateQueries({ queryKey: authQueryKey }); },

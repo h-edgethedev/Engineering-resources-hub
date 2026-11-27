@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from './auth';
+import { apiRequest } from './api';
 
 interface University { id: string; name: string; slug: string; countryCode: string }
 interface Faculty { id: string; name: string; slug: string }
@@ -91,15 +92,12 @@ async function saveAcademicProfile(profile: AcademicProfileInput) {
 }
 
 async function putAuth(path: string, body: unknown, fallback: string) {
-  const csrfResponse = await fetch('/api/v1/auth/csrf', { credentials: 'include' });
-  const csrf = await readApiData<{ csrfToken: string }>(csrfResponse, 'Could not prepare a secure profile update.');
-  const response = await fetch(`/api/v1/auth${path}`, {
-    method: 'PUT',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf.csrfToken },
-    body: JSON.stringify(body),
-  });
-  await readApiData(response, fallback);
+  try { await apiRequest(`/auth${path}`, { method: 'PUT', body: JSON.stringify(body) }); }
+  catch (error) {
+    const apiError = error as { message?: string; details?: Array<{ path?: string; message?: string }> };
+    const details = Array.isArray(apiError.details) ? apiError.details.map((issue) => `${issue.path || 'Request'}: ${issue.message}`).join('; ') : '';
+    throw new Error([apiError.message ?? fallback, details].filter(Boolean).join(' '));
+  }
 }
 
 async function fetchUserProfile(): Promise<UserProfileFields | null> {

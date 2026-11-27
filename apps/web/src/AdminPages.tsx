@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate, useLocation } from 'react-router-dom';
 import { PublicHeader } from './PublicHeader';
 import { useAuth } from './auth';
+import { apiRequest } from './api';
 
 interface Envelope<T> { data: T; meta?: { page: number; pageSize: number; total: number; totalPages: number }; error?: { message?: string }; }
 interface University { id: string; name: string; slug: string; }
@@ -11,17 +12,7 @@ interface AdminUser { id: string; email: string; displayName: string; status: st
 interface AdminResource { id: string; title: string; description: string | null; type: string; status: string; createdAt: string; uploadedById: string | null; course: { id: string; code: string; title: string }; academicSession: { label: string } | null; semester: { label: string; programmeLevel: { code: string; label: string | null } } | null; file: { originalFilename: string; mediaType: string; byteSize: number } | null; uploader: { id: string; displayName: string; profile: { username: string | null } | null } | null; }
 
 async function readApi<T>(path: string, init?: RequestInit): Promise<Envelope<T>> {
-  const response = await fetch(`/api/v1${path}`, { credentials: 'include', ...init });
-  if (!response.ok) {
-    const body = await response.json().catch(() => null) as Envelope<unknown> | null;
-    throw new Error(body?.error?.message ?? 'The request could not be completed.');
-  }
-  return response.status === 204 ? { data: undefined as T } : response.json() as Promise<Envelope<T>>;
-}
-
-async function csrfHeaders() {
-  const response = await readApi<{ csrfToken: string }>('/auth/csrf');
-  return { 'Content-Type': 'application/json', 'X-CSRF-Token': response.data.csrfToken };
+  return apiRequest<T>(path, init);
 }
 
 function hasRole(user: ReturnType<typeof useAuth>['user'], role: string) {
@@ -63,7 +54,7 @@ function ResourceQueue({ adminView }: { adminView: boolean }) {
   async function decide(resourceId: string, action: 'APPROVED' | 'REJECTED', reason: string) {
     setMessage('');
     try {
-      await readApi(`/resources/${resourceId}/moderation`, { method: 'POST', headers: await csrfHeaders(), body: JSON.stringify({ action, ...(reason.trim() ? { reason: reason.trim() } : {}) }) });
+      await readApi(`/resources/${resourceId}/moderation`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, ...(reason.trim() ? { reason: reason.trim() } : {}) }) });
       await queryClient.invalidateQueries({ queryKey: ['operations-resources'] });
       await queryClient.invalidateQueries({ queryKey: ['pending-review-count'] });
       await Promise.all([
@@ -124,7 +115,7 @@ function AdminUsersContent() {
     if (!selected || !selected.emailVerifiedAt || !universityId) return;
     setMessage('');
     try {
-      await readApi(`/auth/admin/users/${selected.id}/roles`, { method: 'POST', headers: await csrfHeaders(), body: JSON.stringify({ role: 'MODERATOR', universityId }) });
+      await readApi(`/auth/admin/users/${selected.id}/roles`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role: 'MODERATOR', universityId }) });
       setMessage(`Moderator access granted to ${selected.displayName} for the selected university.`);
       await queryClient.invalidateQueries({ queryKey: ['admin-users'] });
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not grant moderator access.'); }
@@ -132,7 +123,7 @@ function AdminUsersContent() {
   async function revoke(grantId: string) {
     setMessage('');
     try {
-      await readApi(`/auth/admin/role-assignments/${grantId}`, { method: 'DELETE', headers: await csrfHeaders() });
+      await readApi(`/auth/admin/role-assignments/${grantId}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' } });
       setMessage('Role assignment revoked.');
       await queryClient.invalidateQueries({ queryKey: ['admin-users'] });
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not revoke this role.'); }

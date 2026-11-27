@@ -8,6 +8,7 @@ import { CourseDetailPage, ExplorePage, ResourceDetailPage, UniversitiesPage, Un
 import { AdminResourcesPage, AdminUsersPage, ModerationQueuePage, RequireWorkspace } from './AdminPages';
 import { ResourceGovernancePage } from './GovernancePages';
 import { useAuth } from './auth';
+import { apiRequest } from './api';
 
 interface Department {
   id: string;
@@ -30,10 +31,6 @@ interface University {
   slug: string;
   countryCode: string;
   faculties: Faculty[];
-}
-
-interface ApiResponse<T> {
-  data: T;
 }
 
 interface LandingCourse { id: string; code: string; title: string; programme: { department: { name: string } }; }
@@ -69,27 +66,17 @@ interface DepartmentDetails extends Department {
 }
 
 async function fetchUniversity(): Promise<University> {
-  const response = await fetch('/api/v1/universities/university-of-lagos');
-  if (!response.ok) {
-    throw new Error(response.status === 404 ? 'The university catalogue is not available yet.' : 'Could not load the academic catalogue.');
-  }
-  const result = (await response.json()) as ApiResponse<University>;
+  const result = await apiRequest<University>('/universities/university-of-lagos');
   return result.data;
 }
 
 async function fetchDepartment(universitySlug: string, facultySlug: string, departmentSlug: string): Promise<DepartmentDetails> {
-  const response = await fetch(`/api/v1/universities/${universitySlug}/faculties/${facultySlug}/departments/${departmentSlug}`);
-  if (!response.ok) {
-    throw new Error(response.status === 404 ? 'This department could not be found.' : 'Could not load department details.');
-  }
-  const result = (await response.json()) as ApiResponse<DepartmentDetails>;
+  const result = await apiRequest<DepartmentDetails>(`/universities/${universitySlug}/faculties/${facultySlug}/departments/${departmentSlug}`);
   return result.data;
 }
 
 async function fetchLandingList<T>(path: string): Promise<T[]> {
-  const response = await fetch(`/api/v1${path}`);
-  if (!response.ok) throw new Error('Could not load this catalogue section.');
-  const result = await response.json() as ApiResponse<T[]>;
+  const result = await apiRequest<T[]>(path);
   return result.data;
 }
 
