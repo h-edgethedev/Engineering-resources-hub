@@ -68,3 +68,5 @@ The API health endpoint is `http://localhost:4000/health`; the web app runs at `
 ## Current milestone
 
 The web app supports public discovery, registration with email verification, login, account sessions, resource submissions, moderation queues, and resource governance. In development, verification links appear in the API console unless SMTP is configured. Production requires `EMAIL_SMTP_URL` and `EMAIL_FROM`. See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for the development workflow.
+
+For production hosting, release commands, required environment variables, API routing, and launch checks, see [Production deployment](docs/DEPLOYMENT.md).

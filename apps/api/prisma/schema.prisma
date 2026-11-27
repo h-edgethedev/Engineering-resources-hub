@@ -372,6 +372,7 @@ model Course {
   title       String
   description String?
   creditUnits Int?
+  isGeneralEngineering Boolean @default(false)
   status      RecordStatus     @default(ACTIVE)
   offerings   CourseOffering[]
   resources   Resource[]

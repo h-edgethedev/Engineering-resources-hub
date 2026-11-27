@@ -15,10 +15,13 @@
     "dev:web": "npm run dev --workspace @erh/web",
     "dev:api": "npm run dev --workspace @erh/api",
     "build": "npm run build --workspace @erh/shared && npm run build --workspace @erh/api && npm run build --workspace @erh/web",
+    "build:production": "npm run db:generate && npm run build",
+    "start:api": "npm run start --workspace @erh/api",
     "typecheck": "npm run build --workspace @erh/shared && npm run typecheck --workspace @erh/api && npm run typecheck --workspace @erh/web",
     "test:api": "npm run test --workspace @erh/api",
     "db:generate": "npm run db:generate --workspace @erh/api",
     "db:migrate": "npm run db:migrate --workspace @erh/api",
+    "db:deploy": "npm run db:deploy --workspace @erh/api",
     "db:seed": "npm run db:seed --workspace @erh/api",
     "auth:bootstrap-admin": "npm run auth:bootstrap-admin --workspace @erh/api",
     "db:studio": "npm run db:studio --workspace @erh/api"

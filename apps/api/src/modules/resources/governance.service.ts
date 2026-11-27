@@ -138,7 +138,8 @@ export async function replaceResourceFile(resourceId: string, file: Express.Mult
 export async function requestResourceDeletion(resourceId: string, category: string, explanation: string, actor: AuthContext) {
   const resource = requireResource(await resourceAccess(resourceId));
   if (resource.status === 'REMOVED') throw new ApiError(404, 'RESOURCE_NOT_FOUND', 'Resource was not found.');
-  assertCanGovern(resource, actor);
+  const owner = resource.uploadedById === actor.user.id;
+  if (!owner) assertCanGovern(resource, actor);
   if (hasRole(actor, 'MODERATOR') && resource.uploadedById === actor.user.id && !isSuperAdmin(actor)) {
     throw new ApiError(403, 'SELF_GOVERNANCE_FORBIDDEN', 'A moderator cannot request governance action on their own resource.');
   }
