@@ -15,7 +15,7 @@ The platform is a discovery and contribution layer, not a blanket licence for th
 | Contributor | Submit and maintain own resources; cannot approve or reject any resource |
 | Moderator | University-wide review scope; approve/reject pending resources and remove resources, except own submissions |
 | University Administrator | Manage users, role grants, and academic structures inside one university |
-| Super Administrator | Platform-wide user, role, academic, moderation, settings, and resource submission authority; cannot approve own submissions |
+| Super Administrator | Platform-wide user, role, academic, moderation, settings, and resource submission authority; may approve own resource submissions and deletion requests |
 
 Authorization is enforced by the API. Frontend checks are for usability only. Academic profile fields are optional. Public resource access does not require an account.
 

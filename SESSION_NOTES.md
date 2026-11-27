@@ -2,6 +2,17 @@
 
 Updated: 2026-11-25
 
+## QA recommendations follow-up (2026-11-27)
+
+- Fixed verification and resend requests for signed-in users by excluding these pre-auth routes from the global CSRF gate; the trusted-origin check remains active. Failed verification keeps the link context in the URL.
+- Changed `GET /auth/csrf` to return the token already held in the CSRF cookie when it matches the authenticated session hash, avoiding invalidation across tabs. Added request IDs to API responses and structured error logs for server failures.
+- Added an explicit public resource response DTO that excludes governance fields and storage provider metadata. Updated authorization and API documentation for implemented Super Admin self-approval and status-filter visibility behavior.
+- Added a `Course.isGeneralEngineering` field and migration. Existing records are classified only when `GET` is a complete course-code segment; the reviewed course CSV now stores the classification for seed imports. Department sharing uses this field rather than substring checks. The migration was applied to the configured local PostgreSQL database and reports schema up to date.
+- Added `apps/web/src/api.ts` for common credentials, CSRF token retrieval, API error envelopes, and React Query invalidation. Discovery, account, app shell, auth, admin, governance, onboarding, submission, and reviewer inbox flows now use the shared client for their primary API requests.
+- API regression tests cover role/status list visibility, public DTO exclusions, non-rotating CSRF reads, signed-in verification, request IDs, owner deletion requests, and the explicit course classification. `npm run test:api` passes: 82 tests. `npm run typecheck` and `git diff --check` pass.
+- Search debounce, discovery pagination, and route-level workspace guards were already present. The moderator metadata re-review rule still needs a product decision. Malware scanning and scheduled storage orphan cleanup are still future hardening.
+- Follow-up: resolved uploader deletion from the existing owner-removal policy. Students and other resource owners may submit a reasoned removal request from their account dashboard; Super Admin review is still required before Trash. Moderator self-governance remains blocked. API and product docs now describe this request workflow.
+
 ## Cloudflare R2 storage adapter (2026-11-25)
 
 - Added optional Cloudflare R2 object storage through the AWS S3-compatible SDK. Local filesystem storage remains the default; R2 configuration is validated at API startup when selected.

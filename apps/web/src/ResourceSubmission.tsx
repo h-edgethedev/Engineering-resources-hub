@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from './api';
 
 export interface Course {
   id: string;
@@ -15,15 +16,6 @@ export interface Course {
   }>;
 }
 
-interface ApiEnvelope<T> {
-  data: T;
-  error?: { message?: string };
-}
-
-interface CourseListResponse extends ApiEnvelope<Course[]> {
-  meta: { page: number; totalPages: number; total: number };
-}
-
 const resourceTypes = [
   ['LECTURE_NOTE', 'Lecture notes'],
   ['TEXTBOOK', 'Textbook'],
@@ -37,24 +29,11 @@ const resourceTypes = [
 const supportedExtensions = ['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx', '.txt'];
 const maxUploadBytes = 20 * 1024 * 1024;
 
-async function responseError(response: Response, fallback: string) {
-  try {
-    const body = (await response.json()) as ApiEnvelope<unknown>;
-    return body.error?.message ?? fallback;
-  } catch {
-    return fallback;
-  }
-}
-
 export async function fetchCourses(universitySlug = 'university-of-lagos'): Promise<Course[]> {
   const pageSize = 100;
-  const firstResponse = await fetch(`/api/v1/courses?university=${encodeURIComponent(universitySlug)}&page=1&pageSize=${pageSize}`);
-  if (!firstResponse.ok) throw new Error(await responseError(firstResponse, 'Could not load courses for resource submission.'));
-  const firstPage = (await firstResponse.json()) as CourseListResponse;
-  const pages = await Promise.all(Array.from({ length: Math.max(0, firstPage.meta.totalPages - 1) }, async (_, index) => {
-    const response = await fetch(`/api/v1/courses?university=${encodeURIComponent(universitySlug)}&page=${index + 2}&pageSize=${pageSize}`);
-    if (!response.ok) throw new Error(await responseError(response, 'Could not load the full course list.'));
-    return (await response.json() as CourseListResponse).data;
+  const firstPage = await apiRequest<Course[]>(`/courses?university=${encodeURIComponent(universitySlug)}&page=1&pageSize=${pageSize}`);
+  const pages = await Promise.all(Array.from({ length: Math.max(0, (firstPage.meta?.totalPages ?? 1) - 1) }, async (_, index) => {
+    return (await apiRequest<Course[]>(`/courses?university=${encodeURIComponent(universitySlug)}&page=${index + 2}&pageSize=${pageSize}`)).data;
   }));
   return [...firstPage.data, ...pages.flat()];
 }
@@ -153,9 +132,6 @@ export function ResourceSubmission() {
 
     setIsSubmitting(true);
     try {
-      const csrfResponse = await fetch('/api/v1/auth/csrf', { credentials: 'include' });
-      if (!csrfResponse.ok) throw new Error(await responseError(csrfResponse, 'Your sign-in session may have expired. Sign in again and retry.'));
-      const csrfBody = (await csrfResponse.json()) as ApiEnvelope<{ csrfToken: string }>;
       const formData = new FormData();
       formData.set('courseId', courseId);
       if (academicSessionId) formData.set('academicSessionId', academicSessionId);
@@ -164,13 +140,7 @@ export function ResourceSubmission() {
       formData.set('description', description.trim());
       formData.set('type', type);
       formData.set('file', file);
-      const response = await fetch('/api/v1/resources', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'X-CSRF-Token': csrfBody.data.csrfToken },
-        body: formData,
-      });
-      if (!response.ok) throw new Error(await responseError(response, 'Could not submit this resource. Please try again.'));
+      await apiRequest('/resources', { method: 'POST', body: formData });
       setSubmittedTitle(title.trim());
       setTitle('');
       setDescription('');

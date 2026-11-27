@@ -11,7 +11,7 @@ This document records the initial implementation policy selected on 2026-11-21. 
 | Contributor | University grant | Submit and maintain resources they own. Cannot approve or reject submissions, including their own. |
 | Moderator | Required university grant; university-wide for this release | Review, approve, reject, and remove resources in the assigned university. Cannot review or approve a resource they own. Cannot grant roles or edit the academic catalogue. |
 | University Administrator | Required university grant | Manage users and academic catalogue records inside the assigned university. Cannot manage Super Administrators or grant permissions outside that university. |
-| Super Administrator | Platform-wide | Manage platform settings, users, role grants, and academic records across universities; may also submit resources. May perform moderation, subject to the rule that no person can approve their own resource. |
+| Super Administrator | Platform-wide | Manage platform settings, users, role grants, and academic records across universities; may also submit resources. May approve their own resource submissions and deletion requests. |
 
 Guest is an anonymous access mode, not a persisted role. Role assignments are server-managed and never accepted from client-supplied request fields. A user may hold several role grants; permissions combine, but resource ownership and scope restrictions below still apply.
 
@@ -20,9 +20,9 @@ Guest is an anonymous access mode, not a persisted role. Role assignments are se
 - Only `APPROVED` resources are public. Pending, rejected, and removed resources are not included in guest lists or available through public file endpoints.
 - An authenticated uploader can view their own pending or rejected resource and its file. Moderators and administrators can access records in their assigned scope for review.
 - Every resource records its uploader. An owner may maintain their own submission, but ownership never provides moderation authority.
-- A moderator's decision must be recorded with the actor, action, timestamp, and reason. Moderators cannot act outside their university grant.
+- A moderator's decision must be recorded with the actor, action, timestamp, and reason. Moderators cannot act outside their university grant or approve their own submissions. Super Administrators may approve their own resource submissions.
 - Changes to an approved resource should return it to `PENDING` review. The prior decision should remain auditable.
-- Owners may remove their own resource. A moderator may remove resources only in scope; an administrator may do so within their university. Removal should retain metadata and the audit record while preventing public access.
+- Owners may request removal of their own uploads. Moderators may request removal only for resources in their university scope and cannot request governance action on their own resources. A Super Administrator decides requests and can also move a resource directly to recoverable Trash; permanent purge is a separate action.
 
 ## Scope and role management
 
