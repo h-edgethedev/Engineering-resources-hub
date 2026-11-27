@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'rea
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from './auth';
 import { AccountDashboard, ResourceSubmissionWorkspace } from './AccountPages';
+import { apiRequest } from './api';
 
 function AuthFrame({ eyebrow, title, description, children }: { eyebrow: string; title: string; description: string; children: ReactNode }) {
   return (
@@ -148,14 +149,9 @@ export function VerifyEmailPage() {
     if (!token || attemptedToken.current === token) return;
     attemptedToken.current = token;
     setStatus('checking');
-    void fetch('/api/v1/auth/verify-email', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token }),
-    }).then(async (response) => {
-      if (!response.ok) throw new Error(await responseErrorMessage(response, 'This verification link could not be used.'));
-      const result = await response.json() as { data: { user: import('./auth').AuthUser } };
+    void apiRequest<{ user: import('./auth').AuthUser }>('/auth/verify-email', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }),
+    }).then((result) => {
       acceptVerifiedSession(result.data.user);
       setStatus('verified');
       setMessage('Your email is verified. Let’s finish setting up your account.');
@@ -163,7 +159,6 @@ export function VerifyEmailPage() {
     }).catch((verificationError: unknown) => {
       setStatus('invalid');
       setMessage(verificationError instanceof Error ? verificationError.message : 'This verification link could not be used.');
-      navigate('/verify-email', { replace: true });
     });
   }, [acceptVerifiedSession, navigate, token]);
 
@@ -178,13 +173,9 @@ export function VerifyEmailPage() {
     setMessage('');
     setIsResending(true);
     try {
-      const response = await fetch('/api/v1/auth/resend-verification', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+      await apiRequest('/auth/resend-verification', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }),
       });
-      if (!response.ok) throw new Error(await responseErrorMessage(response, 'Could not request a verification link.'));
       setResendSent(true);
       setResendCooldown(60);
     } catch (resendError) {
@@ -213,13 +204,4 @@ export function VerifyEmailPage() {
     </form>
     <p className="auth-switch"><Link to="/login">Return to sign in</Link></p>
   </AuthFrame>;
-}
-
-async function responseErrorMessage(response: Response, fallback: string) {
-  try {
-    const body = (await response.json()) as { error?: { message?: string } };
-    return body.error?.message ?? fallback;
-  } catch {
-    return fallback;
-  }
 }

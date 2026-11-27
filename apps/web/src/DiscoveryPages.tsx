@@ -5,6 +5,7 @@ import { PublicHeader } from './PublicHeader';
 import { PdfFirstPagePreview } from './PdfFirstPagePreview';
 import { useAuth } from './auth';
 import { fetchCourses } from './ResourceSubmission';
+import { apiMutation, apiRequest } from './api';
 
 interface Envelope<T> { data: T; meta?: { page: number; pageSize: number; total: number; totalPages: number }; }
 interface University { id: string; name: string; slug: string; countryCode: string; faculties?: Faculty[]; _count?: { faculties: number }; }
@@ -27,13 +28,8 @@ interface Resource {
 
 const editableResourceTypes = ['LECTURE_NOTE', 'TEXTBOOK', 'PAST_QUESTION', 'SOLUTION', 'LAB_MANUAL', 'PROGRAMMING_EXERCISE', 'OTHER'];
 
-async function api<T>(path: string): Promise<Envelope<T>> {
-  const response = await fetch(`/api/v1${path}`, { credentials: 'include' });
-  if (!response.ok) {
-    const body = await response.json().catch(() => null) as { error?: { message?: string } } | null;
-    throw new Error(body?.error?.message ?? 'Could not load this information.');
-  }
-  return response.json() as Promise<Envelope<T>>;
+async function api<T>(path: string, init?: RequestInit): Promise<Envelope<T>> {
+  return apiRequest<T>(path, init);
 }
 
 function formatResourceType(type: string) { return type.toLowerCase().replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()); }
@@ -180,20 +176,9 @@ export function ResourceDetailPage() {
   const editAcademicSessions = [...new Map((selectedEditCourse?.offerings ?? []).map(({ academicSession }) => [academicSession.id, academicSession])).values()];
   const editSemesters = [...new Map((selectedEditCourse?.offerings ?? []).filter((offering) => !editAcademicSessionId || offering.academicSession.id === editAcademicSessionId).map(({ semester }) => [semester.id, semester])).values()];
   async function governanceRequest(path: string, method: string, body: Record<string, unknown>) {
-    const csrfResponse = await fetch('/api/v1/auth/csrf', { credentials: 'include' });
-    if (!csrfResponse.ok) throw new Error('Your sign-in session may have expired. Sign in again and retry.');
-    const csrfBody = await csrfResponse.json() as { data: { csrfToken: string } };
-    const response = await fetch(`/api/v1/resources/${resourceId}${path}`, { method, credentials: 'include', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfBody.data.csrfToken }, ...(method === 'PATCH' || method === 'POST' ? { body: JSON.stringify(body) } : {}) });
-    if (!response.ok) {
-      const result = await response.json().catch(() => null) as { error?: { message?: string } } | null;
-      throw new Error(result?.error?.message ?? 'Could not update this resource.');
-    }
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['resource', resourceId] }),
-      queryClient.invalidateQueries({ queryKey: ['discovery', 'resources'] }),
-      queryClient.invalidateQueries({ queryKey: ['course-resources'] }),
-      queryClient.invalidateQueries({ queryKey: ['landing-resources'] }),
-    ]);
+    await apiMutation(`/resources/${resourceId}${path}`, {
+      method, headers: { 'Content-Type': 'application/json' }, ...(method === 'PATCH' || method === 'POST' ? { body: JSON.stringify(body) } : {}),
+    }, queryClient, [['resource', resourceId], ['discovery', 'resources'], ['course-resources'], ['landing-resources']]);
   }
   async function saveResourceEdits(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setGovernanceError(''); setGovernanceMessage('');
@@ -228,27 +213,15 @@ export function ResourceDetailPage() {
     if (!file || !resource || !window.confirm(`Replace the file for “${resource.title}”? The resource will return to pending review.`)) return;
     setGovernanceError(''); setGovernanceMessage('');
     try {
-      const csrfResponse = await fetch('/api/v1/auth/csrf', { credentials: 'include' });
-      if (!csrfResponse.ok) throw new Error('Your sign-in session may have expired. Sign in again and retry.');
-      const csrf = await csrfResponse.json() as { data: { csrfToken: string } };
       const form = new FormData(); form.set('file', file);
-      const response = await fetch(`/api/v1/resources/${resourceId}/file`, { method: 'POST', credentials: 'include', headers: { 'X-CSRF-Token': csrf.data.csrfToken }, body: form });
-      if (!response.ok) {
-        const result = await response.json().catch(() => null) as { error?: { message?: string } } | null;
-        throw new Error(result?.error?.message ?? 'Could not replace the resource file.');
-      }
-      await Promise.all([queryClient.invalidateQueries({ queryKey: ['resource', resourceId] }), queryClient.invalidateQueries({ queryKey: ['discovery', 'resources'] }), queryClient.invalidateQueries({ queryKey: ['course-resources'] })]);
+      await apiMutation(`/resources/${resourceId}/file`, { method: 'POST', body: form }, queryClient, [['resource', resourceId], ['discovery', 'resources'], ['course-resources']]);
       setGovernanceMessage('File replaced. The resource returned to pending review.');
     } catch (error) { setGovernanceError(error instanceof Error ? error.message : 'Could not replace the resource file.'); }
   }
   async function submitReport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setReportError(''); setReportMessage('');
     try {
-      const csrf = await fetch('/api/v1/auth/csrf', { credentials: 'include' });
-      if (!csrf.ok) throw new Error('Your sign-in session may have expired. Sign in again and retry.');
-      const csrfBody = await csrf.json() as { data: { csrfToken: string } };
-      const response = await fetch(`/api/v1/resources/${resourceId}/reports`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfBody.data.csrfToken }, body: JSON.stringify({ category: reportCategory, explanation: reportExplanation.trim() }) });
-      if (!response.ok) { const result = await response.json().catch(() => null) as { error?: { message?: string } } | null; throw new Error(result?.error?.message ?? 'Could not submit this report.'); }
+      await apiMutation(`/resources/${resourceId}/reports`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ category: reportCategory, explanation: reportExplanation.trim() }) }, queryClient, [['governance-inbox'], ['pending-review-count']]);
       setReportMessage('Report sent to the moderation team.'); setReportExplanation(''); setReportOpen(false);
     } catch (error) { setReportError(error instanceof Error ? error.message : 'Could not submit this report.'); }
   }

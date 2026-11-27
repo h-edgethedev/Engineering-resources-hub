@@ -4,6 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { PublicHeader } from './PublicHeader';
 import { useAuth } from './auth';
 import { fetchCourses } from './ResourceSubmission';
+import { apiRequest } from './api';
 
 interface Envelope<T> { data: T; meta?: { page: number; pageSize: number; total: number; totalPages: number }; error?: { message?: string }; }
 interface GovernanceResource {
@@ -29,16 +30,7 @@ const categories = ['DUPLICATE', 'INCORRECT_CLASSIFICATION', 'WRONG_COURSE', 'OU
 const label = (value: string) => value.replaceAll('_', ' ').toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
 
 async function api<T>(path: string, init?: RequestInit): Promise<Envelope<T>> {
-  const response = await fetch(`/api/v1${path}`, { credentials: 'include', ...init });
-  if (!response.ok) {
-    const body = await response.json().catch(() => null) as Envelope<unknown> | null;
-    throw new Error(body?.error?.message ?? 'The request could not be completed.');
-  }
-  return response.status === 204 ? { data: undefined as T } : response.json() as Promise<Envelope<T>>;
-}
-async function csrfHeaders() {
-  const response = await api<{ csrfToken: string }>('/auth/csrf');
-  return { 'Content-Type': 'application/json', 'X-CSRF-Token': response.data.csrfToken };
+  return apiRequest<T>(path, init);
 }
 function useGovernanceRefresh() {
   const queryClient = useQueryClient();
@@ -88,7 +80,7 @@ export function ResourceGovernancePage() {
     if (action === 'REJECT' && !note?.trim()) return;
     setMessage('');
     try {
-      await api(`/resources/governance/deletion-requests/${requestId}/decision`, { method: 'POST', headers: await csrfHeaders(), body: JSON.stringify({ action, ...(note?.trim() ? { note: note.trim() } : {}) }) });
+      await api(`/resources/governance/deletion-requests/${requestId}/decision`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, ...(note?.trim() ? { note: note.trim() } : {}) }) });
       await refresh(); setMessage(action === 'APPROVE' ? 'Request approved. The resource is now in Trash.' : 'Deletion request rejected.');
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not decide this request.'); }
   }
@@ -96,19 +88,19 @@ export function ResourceGovernancePage() {
     const note = window.prompt(action === 'RESOLVED' ? 'What action resolved this report?' : 'Why is this report being dismissed?');
     if (!note?.trim()) return;
     setMessage('');
-    try { await api(`/resources/governance/reports/${reportId}/decision`, { method: 'POST', headers: await csrfHeaders(), body: JSON.stringify({ action, note: note.trim() }) }); await refresh(); setMessage(`Report ${action.toLowerCase()}.`); }
+    try { await api(`/resources/governance/reports/${reportId}/decision`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, note: note.trim() }) }); await refresh(); setMessage(`Report ${action.toLowerCase()}.`); }
     catch (error) { setMessage(error instanceof Error ? error.message : 'Could not resolve this report.'); }
   }
   async function restore(resourceId: string) {
     setMessage('');
-    try { await api(`${base}/${resourceId}/restore`, { method: 'POST', headers: await csrfHeaders() }); await refresh(); setMessage('Resource restored.'); }
+    try { await api(`${base}/${resourceId}/restore`, { method: 'POST', headers: { 'Content-Type': 'application/json' } }); await refresh(); setMessage('Resource restored.'); }
     catch (error) { setMessage(error instanceof Error ? error.message : 'Could not restore this resource.'); }
   }
   async function clearQuarantine(resourceId: string) {
     const reason = window.prompt('Explain why the safety quarantine can be cleared:');
     if (!reason?.trim()) return;
     setMessage('');
-    try { await api(`${base}/${resourceId}/quarantine/clear`, { method: 'POST', headers: await csrfHeaders(), body: JSON.stringify({ reason: reason.trim() }) }); await refresh(); setMessage('Quarantine cleared.'); }
+    try { await api(`${base}/${resourceId}/quarantine/clear`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: reason.trim() }) }); await refresh(); setMessage('Quarantine cleared.'); }
     catch (error) { setMessage(error instanceof Error ? error.message : 'Could not clear quarantine.'); }
   }
   async function purge(resource: GovernanceResource) {
@@ -118,7 +110,7 @@ export function ResourceGovernancePage() {
     const reason = window.prompt('Required reason for permanent deletion:');
     if (!reason?.trim()) return;
     setMessage('');
-    try { await api(`${base}/${resource.id}/purge`, { method: 'POST', headers: await csrfHeaders(), body: JSON.stringify({ confirmation, reason: reason.trim() }) }); await refresh(); setMessage('Permanent deletion was queued. Storage failures remain queued for retry.'); }
+    try { await api(`${base}/${resource.id}/purge`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirmation, reason: reason.trim() }) }); await refresh(); setMessage('Permanent deletion was queued. Storage failures remain queued for retry.'); }
     catch (error) { setMessage(error instanceof Error ? error.message : 'Could not permanently delete this resource.'); }
   }
 
@@ -172,37 +164,35 @@ function GovernanceResourceCard({ resource, superAdmin, onRefresh, onMessage, qu
     event.preventDefault();
     onMessage('');
     try {
-      await api(`/resources/${resource.id}`, { method: 'PATCH', headers: await csrfHeaders(), body: JSON.stringify({ courseId, academicSessionId: academicSessionId || null, semesterId: semesterId || null, title: title.trim(), description: description.trim() || null, type, sourceAttribution: source.trim() || null, tags: tags.split(',').map((tag) => tag.trim()).filter(Boolean) }) });
+      await api(`/resources/${resource.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ courseId, academicSessionId: academicSessionId || null, semesterId: semesterId || null, title: title.trim(), description: description.trim() || null, type, sourceAttribution: source.trim() || null, tags: tags.split(',').map((tag) => tag.trim()).filter(Boolean) }) });
       await onRefresh(); setEditing(false); onMessage('Resource metadata updated and recorded in history.');
     } catch (error) { onMessage(error instanceof Error ? error.message : 'Could not save metadata.'); }
   }
   async function submitDeletion(event: FormEvent) {
     event.preventDefault(); onMessage('');
     try {
-      await api(`/resources/${resource.id}/deletion-requests`, { method: 'POST', headers: await csrfHeaders(), body: JSON.stringify({ category, explanation: explanation.trim() }) });
+      await api(`/resources/${resource.id}/deletion-requests`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ category, explanation: explanation.trim() }) });
       await onRefresh(); setRequesting(false); setExplanation(''); onMessage('Deletion request submitted for Super Admin review.');
     } catch (error) { onMessage(error instanceof Error ? error.message : 'Could not submit deletion request.'); }
   }
   async function moveToTrash() {
     if (!window.confirm(`Move “${resource.title}” to Trash? It will remain recoverable for 30 days.`)) return;
     const reason = window.prompt('Reason for moving this resource to Trash:'); if (!reason?.trim()) return;
-    try { await api(`/resources/${resource.id}`, { method: 'DELETE', headers: await csrfHeaders(), body: JSON.stringify({ reason: reason.trim() }) }); await onRefresh(); onMessage('Resource moved to Trash. Its file is retained during the recovery window.'); }
+    try { await api(`/resources/${resource.id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: reason.trim() }) }); await onRefresh(); onMessage('Resource moved to Trash. Its file is retained during the recovery window.'); }
     catch (error) { onMessage(error instanceof Error ? error.message : 'Could not move resource to Trash.'); }
   }
   async function replaceFile(file: File | undefined) {
     if (!file) return;
     if (!window.confirm(`Replace the file for “${resource.title}”? The resource will return to pending review.`)) return;
     try {
-      const csrf = await api<{ csrfToken: string }>('/auth/csrf');
       const form = new FormData(); form.set('file', file);
-      const response = await fetch(`/api/v1/resources/${resource.id}/file`, { method: 'POST', credentials: 'include', headers: { 'X-CSRF-Token': csrf.data.csrfToken }, body: form });
-      if (!response.ok) { const result = await response.json().catch(() => null) as Envelope<unknown> | null; throw new Error(result?.error?.message ?? 'Could not replace the resource file.'); }
+      await api(`/resources/${resource.id}/file`, { method: 'POST', body: form });
       await onRefresh(); onMessage('File replaced. The resource returned to pending review.');
     } catch (error) { onMessage(error instanceof Error ? error.message : 'Could not replace the resource file.'); }
   }
   async function quarantine() {
     const reason = window.prompt('Urgent safety reason for hiding this resource:'); if (!reason?.trim()) return;
-    try { await api(`/resources/${resource.id}/quarantine`, { method: 'POST', headers: await csrfHeaders(), body: JSON.stringify({ reason: reason.trim() }) }); await onRefresh(); onMessage('Resource quarantined and flagged for Super Admin review.'); }
+    try { await api(`/resources/${resource.id}/quarantine`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: reason.trim() }) }); await onRefresh(); onMessage('Resource quarantined and flagged for Super Admin review.'); }
     catch (error) { onMessage(error instanceof Error ? error.message : 'Could not quarantine the resource.'); }
   }
   return <article className="admin-resource-card"><GovernanceSummary resource={resource} />

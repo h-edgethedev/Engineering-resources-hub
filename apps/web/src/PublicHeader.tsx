@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useAuth } from './auth';
+import { apiMutation, apiRequest } from './api';
 
 interface NotificationItem { id: string; kind: 'RESOURCE_REVIEW' | 'DELETION_REQUEST' | 'RESOURCE_REPORT'; title: string; detail: string; createdAt: string; href: string; }
 interface GovernanceInbox { unreadCount: number; unreadCounts: { resources: number; deletionRequests: number; reports: number }; counts: { resources: number; deletionRequests: number; reports: number }; items: NotificationItem[]; }
-interface ApiEnvelope<T> { data: T; }
 const notificationType = (kind: NotificationItem['kind']) => kind === 'RESOURCE_REVIEW' ? 'Resource review' : kind === 'DELETION_REQUEST' ? 'Deletion request' : 'Reported resource';
 
 export function PublicHeader() {
@@ -33,9 +33,7 @@ export function PublicHeader() {
     refetchInterval: 30_000,
     refetchOnWindowFocus: true,
     queryFn: async () => {
-      const response = await fetch('/api/v1/resources/governance/inbox', { credentials: 'include' });
-      if (!response.ok) throw new Error('Could not load governance notifications.');
-      return (await response.json() as ApiEnvelope<GovernanceInbox>).data;
+      return (await apiRequest<GovernanceInbox>('/resources/governance/inbox')).data;
     },
   });
   const unreadCount = inboxQuery.data?.unreadCount ?? 0;
@@ -46,11 +44,7 @@ export function PublicHeader() {
     if (inboxOpen) return;
     setInboxOpen(true);
     try {
-      const csrfResponse = await fetch('/api/v1/auth/csrf', { credentials: 'include' });
-      if (!csrfResponse.ok) return;
-      const csrf = (await csrfResponse.json() as ApiEnvelope<{ csrfToken: string }>).data.csrfToken;
-      const response = await fetch('/api/v1/resources/governance/inbox/seen', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, body: '{}' });
-      if (response.ok) await queryClient.invalidateQueries({ queryKey: ['governance-inbox', user?.id] });
+      await apiMutation('/resources/governance/inbox/seen', { method: 'POST', body: '{}' }, queryClient, [['governance-inbox', user?.id]]);
     } catch { /* Keep the inbox open; the next poll will refresh its state. */ }
   }
 
