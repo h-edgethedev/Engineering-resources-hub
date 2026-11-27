@@ -8,6 +8,7 @@ import { createHealthRouter } from './modules/health/health.routes.js';
 import { apiRouter } from './routes/index.js';
 import { requireCsrf } from './modules/auth/auth.middleware.js';
 import { attachSession } from './modules/auth/auth.middleware.js';
+import { randomUUID } from 'node:crypto';
 
 export interface AppDependencies {
   databaseHealthCheck?: () => Promise<void>;
@@ -18,6 +19,11 @@ export function createApp(dependencies: AppDependencies = {}): Express {
   const databaseHealthCheck = dependencies.databaseHealthCheck ?? checkDatabaseConnection;
 
   app.disable('x-powered-by');
+  app.use((request, response, next) => {
+    request.requestId = randomUUID();
+    response.setHeader('X-Request-Id', request.requestId);
+    next();
+  });
   app.use((_request, response, next) => {
     response.setHeader('X-Content-Type-Options', 'nosniff');
     response.setHeader('X-Frame-Options', 'DENY');
@@ -28,7 +34,8 @@ export function createApp(dependencies: AppDependencies = {}): Express {
   app.use(express.json({ limit: '1mb' }));
   app.use('/health', createHealthRouter(databaseHealthCheck));
   app.use('/api/v1', attachSession, (request, response, next) => {
-    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method) && request.auth && request.path !== '/auth/login' && request.path !== '/auth/register') {
+    const preAuthMutation = ['/auth/login', '/auth/register', '/auth/verify-email', '/auth/resend-verification'].includes(request.path);
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method) && request.auth && !preAuthMutation) {
       requireCsrf(request, response, next);
       return;
     }

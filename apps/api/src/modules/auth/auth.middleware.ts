@@ -15,6 +15,10 @@ function cookieValue(header: string | undefined, name: string): string | undefin
   try { return decodeURIComponent(pair.slice(name.length + 1)); } catch { return undefined; }
 }
 
+export function csrfCookieValue(request: Parameters<RequestHandler>[0]) {
+  return cookieValue(request.headers.cookie, csrfCookieName);
+}
+
 export const attachSession: RequestHandler = async (request, _response, next) => {
   const token = cookieValue(request.headers.cookie, sessionCookieName);
   if (!token || token.length > 128) { next(); return; }

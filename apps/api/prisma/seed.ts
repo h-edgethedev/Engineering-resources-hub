@@ -10,6 +10,7 @@ interface CourseImportRow {
   academic_session: string;
   semester: string;
   course_code: string;
+  is_general_engineering: string;
   course_title: string;
   credit_units: string;
   source_pdf: string;
@@ -85,6 +86,7 @@ async function loadCourseImport(): Promise<CourseImportRow[]> {
       academic_session: row.academic_session ?? '',
       semester: row.semester ?? '',
       course_code: row.course_code ?? '',
+      is_general_engineering: row.is_general_engineering ?? '',
       course_title: row.course_title ?? '',
       credit_units: row.credit_units ?? '',
       source_pdf: row.source_pdf ?? '',
@@ -278,6 +280,9 @@ async function main() {
     if (row.programme !== programme.name) {
       throw new Error(`Unexpected programme for ${row.course_code}: ${row.programme}`);
     }
+    if (!['true', 'false'].includes(row.is_general_engineering)) {
+      throw new Error(`Invalid general engineering classification for ${row.course_code}.`);
+    }
 
     const levelDefinition = levelBySession[row.academic_session as keyof typeof levelBySession];
     const semesterDefinition = semesterByName[row.semester as keyof typeof semesterByName];
@@ -297,12 +302,13 @@ async function main() {
 
     const course = await prisma.course.upsert({
       where: { programmeId_code: { programmeId: programme.id, code: row.course_code } },
-      update: { title: row.course_title, creditUnits },
+      update: { title: row.course_title, creditUnits, isGeneralEngineering: row.is_general_engineering === 'true' },
       create: {
         programmeId: programme.id,
         code: row.course_code,
         title: row.course_title,
         creditUnits,
+        isGeneralEngineering: row.is_general_engineering === 'true',
       },
     });
 

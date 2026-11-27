@@ -310,7 +310,7 @@ describe('authentication and role grants', () => {
     expect(JSON.stringify(body)).not.toContain(password);
   });
 
-  it('requires CSRF for authenticated logout and verification endpoints', async () => {
+  it('requires CSRF for authenticated logout but allows pre-auth verification endpoints', async () => {
     const logoutMissing = await request('/api/v1/auth/logout', { method: 'POST' }, true, false);
     expect(logoutMissing.status).toBe(403);
     await expect(logoutMissing.json()).resolves.toMatchObject({ error: { code: 'CSRF_VALIDATION_FAILED' } });
@@ -319,12 +319,11 @@ describe('authentication and role grants', () => {
     expect(logoutWrong.status).toBe(403);
 
     const verifyMissing = await request('/api/v1/auth/verify-email', json({ token: 'a'.repeat(40) }), true, false);
-    expect(verifyMissing.status).toBe(403);
-    await expect(verifyMissing.json()).resolves.toMatchObject({ error: { code: 'CSRF_VALIDATION_FAILED' } });
+    expect(verifyMissing.status).not.toBe(403);
+    await expect(verifyMissing.json()).resolves.not.toMatchObject({ error: { code: 'CSRF_VALIDATION_FAILED' } });
 
     const resendMissing = await request('/api/v1/auth/resend-verification', json({ email: student.email }), true, false);
-    expect(resendMissing.status).toBe(403);
-    await expect(resendMissing.json()).resolves.toMatchObject({ error: { code: 'CSRF_VALIDATION_FAILED' } });
+    expect(resendMissing.status).toBe(200);
   });
 
   it('allows a signed-in verification request when CSRF is valid', async () => {
@@ -339,13 +338,13 @@ describe('authentication and role grants', () => {
     expect(db.authSession.create).toHaveBeenCalledOnce();
   });
 
-  it('rotates the CSRF token for signed-in users', async () => {
+  it('returns the current CSRF token without rotating it for signed-in users', async () => {
     const response = await request('/api/v1/auth/csrf', { method: 'GET' }, true);
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.data.csrfToken).toEqual(expect.any(String));
-    expect(body.data.csrfToken).not.toBe(csrfToken);
-    expect(response.headers.get('set-cookie')).toContain('enghub_csrf=');
-    expect(db.authSession.update).toHaveBeenCalledWith({ where: { id: 'session-id' }, data: { csrfTokenHash: expect.any(String) } });
+    expect(body.data.csrfToken).toBe(csrfToken);
+    expect(response.headers.get('set-cookie')).toBeNull();
+    expect(db.authSession.update).not.toHaveBeenCalled();
   });
 });

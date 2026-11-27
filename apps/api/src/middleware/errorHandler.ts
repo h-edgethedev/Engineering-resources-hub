@@ -31,13 +31,23 @@ export const errorHandler: ErrorRequestHandler = (error: unknown, request, respo
   const apiError = normalizeError(error);
 
   if (apiError.statusCode >= 500) {
-    console.error(`${request.method} ${request.path} failed (${apiError.code}).`);
+    console.error(JSON.stringify({
+      level: 'error',
+      event: 'http_request_failed',
+      requestId: request.requestId,
+      method: request.method,
+      path: request.path,
+      statusCode: apiError.statusCode,
+      errorCode: apiError.code,
+      errorType: error instanceof Error ? error.name : typeof error,
+    }));
   }
 
   response.status(apiError.statusCode).json({
     error: {
       code: apiError.code,
       message: apiError.message,
+      ...(request.requestId ? { requestId: request.requestId } : {}),
       ...(apiError.details === undefined ? {} : { details: apiError.details }),
     },
   });

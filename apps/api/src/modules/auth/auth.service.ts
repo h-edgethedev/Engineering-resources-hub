@@ -65,12 +65,6 @@ export async function createSession(userId: string) {
   return { id: session.id, token, csrfToken, csrfTokenHash: digest(csrfToken), expiresAt };
 }
 
-export async function rotateCsrfToken(sessionId: string) {
-  const csrfToken = randomBytes(32).toString('base64url');
-  await prisma.authSession.update({ where: { id: sessionId }, data: { csrfTokenHash: digest(csrfToken) } });
-  return csrfToken;
-}
-
 export function hashSessionToken(token: string) {
   return digest(token);
 }

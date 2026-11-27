@@ -28,12 +28,40 @@ function validationError(issues: Array<{ path: PropertyKey[]; message: string }>
   return new ApiError(400, 'VALIDATION_ERROR', 'Request data is invalid.', issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message })));
 }
 
+export function publicResourceDto<T extends {
+  id: string; courseId: string; academicSessionId: string | null; semesterId: string | null;
+  title: string; description: string | null; type: string; status: string; sourceAttribution: string | null;
+  tags: string[]; uploadedById: string | null; createdAt: Date; updatedAt: Date;
+  course: unknown; academicSession: unknown; semester: unknown; file: unknown; uploader: unknown;
+}>(resource: T) {
+  return {
+    id: resource.id,
+    courseId: resource.courseId,
+    academicSessionId: resource.academicSessionId,
+    semesterId: resource.semesterId,
+    title: resource.title,
+    description: resource.description,
+    type: resource.type,
+    status: resource.status,
+    sourceAttribution: resource.sourceAttribution,
+    tags: resource.tags,
+    uploadedById: resource.uploadedById,
+    createdAt: resource.createdAt,
+    updatedAt: resource.updatedAt,
+    course: resource.course,
+    academicSession: resource.academicSession,
+    semester: resource.semester,
+    file: resource.file,
+    uploader: resource.uploader,
+  };
+}
+
 export const listResourcesController: RequestHandler = async (request, response, next) => {
   try {
     const parsed = listResourcesQuerySchema.safeParse(request.query);
     if (!parsed.success) throw validationError(parsed.error.issues);
     const result = await listResources(parsed.data, request.auth);
-    response.json({ data: result.items, meta: result.meta });
+    response.json({ data: result.items.map(publicResourceDto), meta: result.meta });
   } catch (error) { next(error); }
 };
 
@@ -41,7 +69,7 @@ export const getResourceController: RequestHandler = async (request, response, n
   try {
     const resource = await findResourceById(resourceId(request), request.auth);
     if (!resource) throw new ApiError(404, 'RESOURCE_NOT_FOUND', 'Resource was not found.');
-    response.json({ data: resource });
+    response.json({ data: publicResourceDto(resource) });
   } catch (error) { next(error); }
 };
 
@@ -53,7 +81,7 @@ export const createResourceController: RequestHandler = async (request, response
     const parsed = createResourceSchema.safeParse(request.body);
     if (!parsed.success) throw validationError(parsed.error.issues);
     const resource = await createResource(parsed.data, file, request.auth);
-    response.status(201).json({ data: resource });
+    response.status(201).json({ data: publicResourceDto(resource) });
   } catch (error) { next(error); }
   finally { if (file?.path) await rm(file.path, { force: true }).catch(() => undefined); }
 };
@@ -82,7 +110,7 @@ export const updateResourceController: RequestHandler = async (request, response
     if (!parsed.success) throw validationError(parsed.error.issues);
     if (!request.auth) throw new ApiError(401, 'AUTHENTICATION_REQUIRED', 'Sign in to update a resource.');
     const resource = await editResourceMetadata(resourceId(request), parsed.data, request.auth);
-    response.json({ data: resource });
+    response.json({ data: publicResourceDto(resource) });
   } catch (error) { next(error); }
 };
 
@@ -92,7 +120,7 @@ export const deleteResourceController: RequestHandler = async (request, response
     const parsed = trashReasonSchema.safeParse(request.body);
     if (!parsed.success) throw validationError(parsed.error.issues);
     const resource = await moveResourceToTrash(resourceId(request), parsed.data.reason, request.auth);
-    response.json({ data: resource });
+    response.json({ data: publicResourceDto(resource) });
   } catch (error) { next(error); }
 };
 
@@ -101,7 +129,7 @@ export const replaceResourceFileController: RequestHandler = async (request, res
   try {
     if (!request.auth) throw new ApiError(401, 'AUTHENTICATION_REQUIRED', 'Sign in to replace a resource file.');
     if (!file) throw new ApiError(400, 'RESOURCE_FILE_REQUIRED', 'Upload one file using the multipart field named "file".');
-    response.json({ data: await replaceResourceFile(resourceId(request), file, request.auth) });
+    response.json({ data: publicResourceDto(await replaceResourceFile(resourceId(request), file, request.auth)) });
   } catch (error) { next(error); }
   finally { if (file?.path) await rm(file.path, { force: true }).catch(() => undefined); }
 };
@@ -112,6 +140,6 @@ export const moderateResourceController: RequestHandler = async (request, respon
     const parsed = moderationSchema.safeParse(request.body);
     if (!parsed.success) throw validationError(parsed.error.issues);
     const resource = await moderateResource(resourceId(request), parsed.data.action, parsed.data.reason, request.auth);
-    response.json({ data: resource });
+    response.json({ data: publicResourceDto(resource) });
   } catch (error) { next(error); }
 };

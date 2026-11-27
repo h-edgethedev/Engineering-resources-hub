@@ -44,7 +44,7 @@ beforeEach(() => {
   db.programme.findMany.mockResolvedValue([{ id: 'p1', name: 'B.Sc. Computer Engineering', slug: programme }]);
   db.programme.findFirst.mockResolvedValue({ id: 'p1', slug: programme });
   db.course.count.mockResolvedValue(1);
-  db.course.findMany.mockResolvedValue([{ id: courseId, code: 'CPE 101', title: 'Introduction to Computing' }]);
+  db.course.findMany.mockResolvedValue([{ id: courseId, code: 'CPE 101', title: 'Introduction to Computing', isGeneralEngineering: false }]);
   db.course.findFirst.mockResolvedValue({ id: courseId, code: 'CPE 101', title: 'Introduction to Computing' });
 });
 
@@ -93,9 +93,18 @@ describe('academic endpoints', () => {
     const where = db.course.findMany.mock.calls[0][0].where;
     expect(where.programme.department.faculty.university).toMatchObject({ slug: uni });
     expect(where.OR).toContainEqual({ programme: { department: { slug: department } } });
-    expect(where.OR).toContainEqual({ code: { contains: 'GET', mode: 'insensitive' } });
+    expect(where.OR).toContainEqual({ isGeneralEngineering: true });
     expect(where.offerings.some.AND).toContainEqual({ semester: { programmeLevel: { code: '100' } } });
     expect(db.course.findMany.mock.calls[0][0]).toMatchObject({ skip: 5, take: 5 });
+  });
+
+  it('returns the stored general-engineering classification rather than deriving it from the code', async () => {
+    db.course.findMany.mockResolvedValueOnce([
+      { id: courseId, code: 'BUDGET101', title: 'Budget Systems', isGeneralEngineering: false },
+      { id: 'd9428888-122b-11e1-b85c-61cd3c321122', code: 'GET101', title: 'Engineering in Society', isGeneralEngineering: true },
+    ]);
+    const response = await request('/api/v1/courses');
+    await expect(response.json()).resolves.toMatchObject({ data: [{ code: 'BUDGET101', isGeneralEngineering: false }, { code: 'GET101', isGeneralEngineering: true }] });
   });
 
   it('fetches a course by UUID', async () => {

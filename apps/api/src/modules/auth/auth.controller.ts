@@ -1,8 +1,9 @@
 import type { RequestHandler } from 'express';
+import { createHash } from 'node:crypto';
 import { ApiError } from '../../errors/ApiError.js';
 import { prisma } from '../../infrastructure/database.js';
-import { createSession, findLoginUser, register, revokeSession, rotateCsrfToken, sessionLifetimeMs } from './auth.service.js';
-import { clearSessionCookies, makeCsrfCookie, makeSessionCookies } from './auth.middleware.js';
+import { createSession, findLoginUser, register, revokeSession, sessionLifetimeMs } from './auth.service.js';
+import { clearSessionCookies, csrfCookieValue, makeSessionCookies } from './auth.middleware.js';
 import { loginSchema, registerSchema, resendVerificationSchema, verifyEmailSchema } from './auth.schemas.js';
 import { resendEmailVerification, sendEmailVerification, verifyEmailAddress } from './email-verification.service.js';
 
@@ -73,9 +74,11 @@ export const meController: RequestHandler = (request, response) => {
 
 export const csrfController: RequestHandler = async (request, response, next) => {
   try {
-    if (!request.auth) throw new ApiError(401, 'AUTHENTICATION_REQUIRED', 'Sign in to refresh the CSRF token.');
-    const csrfToken = await rotateCsrfToken(request.auth.sessionId);
-    response.append('Set-Cookie', makeCsrfCookie(csrfToken, Math.floor(sessionLifetimeMs / 1000)));
+    if (!request.auth) throw new ApiError(401, 'AUTHENTICATION_REQUIRED', 'Sign in to retrieve the CSRF token.');
+    const csrfToken = csrfCookieValue(request);
+    if (!csrfToken || createHash('sha256').update(csrfToken).digest('hex') !== request.auth.csrfTokenHash) {
+      throw new ApiError(403, 'CSRF_VALIDATION_FAILED', 'The request CSRF token is missing or invalid.');
+    }
     response.json({ data: { csrfToken } });
   } catch (error) { next(error); }
 };
